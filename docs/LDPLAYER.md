@@ -27,6 +27,11 @@ flutter run -d 127.0.0.1:5555 --dart-define=API_BASE_URL=http://127.0.0.1:8080
 Hoặc chọn **CareConnect - LDPlayer (local API)** trong Run and Debug của VS Code
 và bấm F5. Cấu hình này tự chạy script kết nối trước khi khởi động app.
 
+Nếu dùng Android Studio: mở thư mục gốc repo, chạy script trong Terminal, chọn
+thiết bị LDPlayer rồi Run cấu hình Flutter với entrypoint `lib/main.dart` và
+**Additional run args** là `--dart-define=API_BASE_URL=http://127.0.0.1:8080`.
+Xem [các bước Android Studio trong README](../README.md#chạy-bằng-android-studio).
+
 Script dùng `adb.exe` trong Android SDK, kiểm tra Android API >= 24, rồi thực hiện
 `adb reverse tcp:8080 tcp:8080` cho đúng thiết bị `127.0.0.1:5555`. Vì vậy
 `127.0.0.1:8080` trong app trỏ về gateway trên PC, không phụ thuộc địa chỉ NAT
@@ -57,9 +62,9 @@ Gateway phải chạy trên PC tại `http://127.0.0.1:8080`. Kiểm tra từ PC
 curl.exe http://127.0.0.1:8080/actuator/health
 ```
 
-Tại lúc chuẩn bị cấu hình, gateway localhost:8080 chưa phản hồi và LDPlayer chưa
-được cài. Vì vậy chưa xác minh kết nối thực tế trên LDPlayer. Khi gateway chưa
-chạy, app vẫn có thể mở màn đăng nhập nhưng không đăng nhập được.
+Đã mở màn đăng nhập trên LDPlayer Android API 28 với màn hình dọc 720 × 1280,
+DPI 240. Chưa xác minh đăng nhập/giao dịch với BE thật. Khi gateway chưa chạy,
+app vẫn mở màn đăng nhập nếu chưa có phiên đã lưu; thao tác đăng nhập cần BE.
 
 APK cũ trong `artifacts` dùng cấu hình Android Emulator mặc định. Để dùng cấu hình
 LDPlayer/ADB reverse này, chạy bằng lệnh Flutter ở trên hoặc build lại:

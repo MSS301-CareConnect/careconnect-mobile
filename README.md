@@ -2,14 +2,78 @@
 
 Ứng dụng Flutter cho **CAREGIVER**, kết nối BE CareConnect qua API gateway. Chỉ repo mobile được thay đổi; BE và FE-careconnect được đọc để đối chiếu hợp đồng và nghiệp vụ.
 
-## Chạy ứng dụng
+## Chuẩn bị môi trường Android
 
-Yêu cầu Flutter **3.44.1** / Dart **3.12.1**, JDK 21, Android SDK và emulator hoặc thiết bị. iOS yêu cầu macOS/Xcode, iOS 14 trở lên.
+Yêu cầu Flutter **3.44.1** / Dart **3.12.1**, JDK 21, Android Studio và Android SDK. Thiết bị chạy app cần Android 7.0 / API 24 trở lên. iOS yêu cầu macOS/Xcode, iOS 14 trở lên.
+
+1. Cài Flutter SDK ngoài repo, thêm thư mục `flutter/bin` vào `PATH`.
+2. Trong Android Studio, mở **Settings → Plugins → Marketplace**, cài **Flutter** và Dart nếu được yêu cầu, sau đó khởi động lại IDE.
+3. Mở **Tools → SDK Manager**, chuẩn bị Android SDK Platform theo yêu cầu build, SDK Platform-Tools, Build-Tools và Command-line Tools. Dùng JDK 21 cho Gradle; không thay đổi version Gradle/AGP đã khóa trong repo.
+4. Mở PowerShell tại thư mục gốc `careconnect-mobile` (chứa `pubspec.yaml`) và kiểm tra:
+
+```powershell
+flutter --version
+flutter doctor -v
+flutter doctor --android-licenses
+flutter pub get --enforce-lockfile
+```
+
+Xử lý các lỗi thuộc Android toolchain trong `flutter doctor` trước khi chạy. Nếu chỉ phát triển Android, không cần cài Xcode hoặc bộ công cụ Windows desktop. Lần build đầu cần mạng để tải dependencies và có thể mất vài phút.
+
+## Chạy bằng Android Studio
+
+1. Chọn **File → Open**, mở thư mục gốc **careconnect-mobile**, không chỉ mở thư mục `android`.
+2. Tại **Settings → Languages & Frameworks → Flutter**, chọn đường dẫn Flutter SDK nếu IDE chưa nhận. Chạy `flutter pub get --enforce-lockfile` trong Terminal của IDE.
+3. Chuẩn bị thiết bị theo một trong hai cách:
+   - **Android Emulator:** mở **Tools → Device Manager**, tạo/chạy một thiết bị điện thoại Android API 24 trở lên.
+   - **LDPlayer:** mở LDPlayer và chạy script kết nối theo mục bên dưới. Khi dùng LDPlayer, không cần tạo thêm Android Emulator.
+4. Mở **Run → Edit Configurations**, chọn cấu hình Flutter hiện có hoặc thêm cấu hình **Flutter**, đặt **Dart entrypoint** là `lib/main.dart`.
+5. Trong **Additional run args**, chọn cấu hình gateway tương ứng:
+   - Android Emulator của Android Studio: `--dart-define=API_BASE_URL=http://10.0.2.2:8080`.
+   - LDPlayer sau khi chạy script: `--dart-define=API_BASE_URL=http://127.0.0.1:8080`.
+6. Chọn thiết bị ở thanh công cụ rồi bấm **Run ▶** hoặc **Debug**. LDPlayer có thể xuất hiện dưới tên model Android; kiểm tra ID bằng `flutter devices` nếu có nhiều thiết bị.
+
+Sửa giao diện rồi dùng **Hot Reload** để xem thay đổi. Khi đổi `API_BASE_URL`, dừng phiên chạy và Run lại. Cấu hình `.vscode/launch.json` chỉ phục vụ VS Code; Android Studio dùng cấu hình Flutter vừa tạo.
+
+Tham khảo: [Flutter với Android Studio](https://docs.flutter.dev/tools/android-studio), [thiết lập Android toolchain](https://docs.flutter.dev/platform-integration/android/setup).
+
+## Chạy trên LDPlayer
+
+LDPlayer do người dùng tự cài ngoài repo. Cấu hình nhẹ để thử giao diện: **2 CPU, RAM 2048 MB, 30 FPS, màn hình dọc 720 × 1280, DPI 240**. Đây là cấu hình khởi điểm; có thể tăng tài nguyên nếu máy chạy chậm.
+
+1. Mở LDPlayer, vào **Settings → Other settings/Others → ADB debugging**, bật **kết nối cục bộ** rồi lưu/khởi động lại nếu được yêu cầu. Không cần bật root.
+2. Tại Terminal PowerShell ở thư mục gốc repo, chạy:
 
 ```powershell
 flutter pub get --enforce-lockfile
-flutter run -d emulator-5554 --dart-define=API_BASE_URL=http://10.0.2.2:8080
+.\scripts\connect-ldplayer.ps1
+flutter devices
+flutter run -d 127.0.0.1:5555 --dart-define=API_BASE_URL=http://127.0.0.1:8080
 ```
+
+Script kết nối instance đầu tiên tại `127.0.0.1:5555`, kiểm tra API Android và chạy `adb reverse tcp:8080 tcp:8080`. Chạy lại script mỗi lần khởi động lại LDPlayer. Sau khi kết nối, có thể dùng nút Run trong Android Studio thay cho lệnh `flutter run`.
+
+Nếu script không tìm thấy Android SDK, lấy đường dẫn từ SDK Manager và truyền rõ `adb.exe`:
+
+```powershell
+.\scripts\connect-ldplayer.ps1 -AdbPath 'C:\duong-dan-sdk\platform-tools\adb.exe'
+```
+
+Xem [hướng dẫn LDPlayer chi tiết](docs/LDPLAYER.md) để đổi instance/cổng và dùng cấu hình VS Code có sẵn **CareConnect - LDPlayer (local API)**.
+
+### Lỗi thường gặp
+
+| Hiện tượng | Cách xử lý |
+| --- | --- |
+| Không tìm thấy lệnh `flutter` | Thêm `flutter/bin` vào `PATH`, mở lại Terminal/Android Studio. |
+| Android Studio chỉ có cấu hình Gradle, không có Flutter | Cài plugin Flutter và mở lại thư mục gốc chứa `pubspec.yaml`. |
+| Không thấy LDPlayer trong danh sách thiết bị | Chờ LDPlayer khởi động xong, kiểm tra ADB cục bộ, chạy lại script rồi `flutter devices`. |
+| Thiết bị có trạng thái `offline` | Khởi động lại LDPlayer, chạy lại script kết nối. |
+| Có nhiều thiết bị Android | Chọn đúng thiết bị trong IDE hoặc chỉ định `-d` với ID từ `flutter devices`. |
+| Login hiện nhưng báo lỗi kết nối khi đăng nhập | Chạy gateway BE, kiểm tra `API_BASE_URL`; với LDPlayer chạy lại script để tạo ADB reverse. |
+| Build lỗi sau khi dọn cache | Chạy `flutter pub get --enforce-lockfile`, kiểm tra `flutter doctor -v`, rồi chạy lại app. |
+
+## Kết nối BE
 
 `API_BASE_URL` là **origin của gateway**, không thêm `/api/v1` và không trỏ thẳng tới từng microservice.
 
@@ -78,7 +142,3 @@ Kết quả xác minh ngày 30/10/2026: formatter và analyzer sạch, 25 test t
 Chạy `flutter clean` để xóa build/cache sinh tự động. Lần chạy tiếp theo dùng `flutter pub get` rồi `flutter run` hoặc `flutter build apk`. Không lưu dữ liệu emulator trong repo.
 
 Sau lượt dọn hiện tại, APK được giữ tại `artifacts/careconnect-debug.apk` (gitignore). Nếu không cần bản APK này, có thể xóa thư mục `artifacts`; mã nguồn và cấu hình còn khoảng 6 MB. Các lệnh build ở trên sẽ tạo lại APK tại đường dẫn build mặc định.
-
-## LDPlayer
-
-Nếu dùng LDPlayer, xem [hướng dẫn cấu hình](docs/LDPLAYER.md). Repo có script `scripts/connect-ldplayer.ps1` và cấu hình VS Code **CareConnect - LDPlayer (local API)** để kết nối ADB cục bộ và chuyển cổng gateway bằng `adb reverse`. LDPlayer do người dùng tự cài ngoài repo; không có thay đổi logic ứng dụng hoặc BE.
