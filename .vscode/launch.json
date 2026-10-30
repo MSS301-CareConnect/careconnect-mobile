@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CareConnect - LDPlayer (local API)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "debug",
+      "deviceId": "127.0.0.1:5555",
+      "preLaunchTask": "CareConnect: connect LDPlayer",
+      "toolArgs": ["--dart-define=API_BASE_URL=http://127.0.0.1:8080"]
+    }
+  ]
+}
