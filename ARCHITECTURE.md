@@ -1,67 +1,59 @@
 # CareConnect Mobile architecture
 
-Flutter Android/iOS app for active CAREGIVER accounts. Vietnamese is the default;
-English is selectable. Material 3 uses the web's botanical brand colors.
+React Native CLI Android app for CAREGIVER with strict TypeScript. The user requested Flutter replacement on 01/11/2026, then explicitly replaced the Expo approach with React Native CLI and limited the target to Android. Earlier Expo/Flutter design and progress documents are historical; this runtime decision supersedes their platform setup.
 
-## Runtime and boundaries
+## Runtime boundaries
 
-`app.dart` owns routes and the access guard. `core/` contains session/authenticated
-HTTP, token storage, locale, theme, common widgets and foreground device actions.
-`features/` owns typed domain models, API workflows and presentation. No backend
-or web code is modified, imported or executed by the app.
+App.tsx mounts shared providers; src/app/navigation.tsx composes auth guard, five tabs (Today, Assigned visits, Work shifts, Availability, Profile) and detail/form stacks. Completed history remains within Assigned visits and a compatibility stack route. Visit filters use a focused modal; drafts are committed together on Apply. src/core contains HTTP/session, boundary parsers, memory resources/mutation hooks, translations, theme/shared controls and foreground device access. Core never imports features. src/features owns models, repositories and presentation for auth, home, visits, work shifts, sessions, reports, profile and notifications. BE/FE code is never imported or executed by the app.
 
-All business data is read from the gateway `/api/v1/**`. `ApiClient` unwraps
-`{code, result}`; `PageData<T>` handles `{items,page,size,totalPages,totalElements}`.
-Dio has explicit timeouts and no logging interceptor. Repeated workflows such as
-report draft lookup and visit actions have feature repositories; simple screen
-requests use the same client directly. Riverpod supplies session-scoped services;
-`DataView<T>` owns screen-local remote data and explicit refresh/error states.
-No patient data is persisted. The router drops protected routes on sign-out and
-the shell is keyed by session epoch. The HTTP client rejects late protected reads
-from a prior epoch. Form controllers are disposed with their route.
+All business traffic uses the gateway /api/v1. ApiClient unwraps code=200/result; Page models retain server totals and pagination. Unknown JSON is parsed into typed models at boundaries. Domain text stays as provided. No API payload logging, persisted patient cache, offline mutation queue or patient database. Cache-Control:no-store is sent. Report images open as HTTPS links rather than disk-cached native previews. The native documents adapter uses open mode with no local copies or long-term file access grants.
 
-## Authentication
+## Session
 
-The current BE `AuthenticationController` supports unified `/auth/login` and
-`/auth/refresh` with `X-Client-Type: mobile`. Its `/auth/mobile/*` aliases are
-deprecated (2026-10-19), despite the older Identity README. Implementation follows
-the current controller and TokenTransport. `/users/me` is authoritative for
-ACTIVE status and the CAREGIVER role. No cookie/CSRF transport is used by the app.
+Unified /auth/login and /auth/refresh with X-Client-Type:mobile supersede deprecated /auth/mobile aliases and web cookie/CSRF transport. Refresh tokens are in namespaced Android Keystore-backed Keychain storage, access tokens only in memory. GET /users/me checks ACTIVE and CAREGIVER. Backend authorizes every actual request. Retired Expo SecureStore entries are not imported; first CLI launch requires sign-in.
 
-Only refresh tokens are stored in platform secure storage. Access tokens stay in
-memory. A single in-flight refresh rotates tokens for concurrent 401s. Calls retry
-once after authentication failure, but not after timeouts or uncertain writes.
-Invalid refresh/role clears the session; temporary network/server failure keeps
-the refresh token and offers retry. Writes to secure storage are serialized so a
-late rotation cannot overwrite a logout. Logout attempts server revocation while
-clearing local state, and reports when revocation could not be confirmed.
+Storage writes are serialized. Session epochs reject responses from an earlier account/logout. Concurrent 401 requests share one rotation, retrying authentication failure once. Timeouts/5xx on mutations are not automatically retried. Transient restore failure retains the secure refresh token and shows retry; invalid credentials/role clear the session. Logout removes protected UI, forms, memory data and polling even if server revocation fails; revocation uncertainty is surfaced.
 
-## Domain rules
+## Domain contracts
 
-- BookingOccurrence is the assigned visit; CareSession is the actual care session.
-  Provider schedules are availability, not visit progress.
-- Check-in is open from start minus 30 minutes to start plus 30 minutes; server
-  checks authoritative time. Session task/notes are editable only while IN_PROGRESS.
-- Reports are private drafts until SUBMITTED and become immutable after submission.
-  Submission requires an ended session in BE. No condition is selected by default.
-  Update sends version. The UI retains saved IDs across upload/submit failure.
-- Provider work date/time is Asia/Ho_Chi_Minh, independent of device timezone;
-  Booking Instant timestamps are displayed in the device timezone.
-- Registration guards inspect all pages of own registrations; UI pages remain
-  navigable. Server checks scope, overlap, capacity, deadline and duplicate writes.
-- Notifications refresh on opening/resume and foreground count polling. No push
-  background or continuous SSE connection. Navigation accepts only known reference
-  types with UUID IDs, never arbitrary URLs from notification payloads.
-- Location is optional, foreground only, no background permission. Uploads use
-  native document picking. Remote file links require HTTPS.
+BookingOccurrence is an assigned visit. CareSession is actual care. Provider Schedule is assigned work availability, never simulated visit progress. Detail snapshots/services may be absent from list DTOs or hidden by scope. No secondary patient API bypasses snapshot visibility. Masked phones are not callable.
 
-## Platform and delivery
+The work-shifts feature owns caregiver registration. The Work shifts tab shows upcoming OPEN shifts and My registrations as separate sections on the same screen, using the caregiver center scope enforced by BE. Work dates/times and registration deadlines are shown in Vietnam time. Detail reads the profile and scans all registration pages to detect an active PENDING/APPROVED registration. POST /work-shifts/{id}/registrations sends caregiverNote only (max 2000); successful registration remains PENDING until BE approval. Confirmed DELETE /work-shifts/registrations/{id}?version=... is available only for PENDING. APPROVED registrations are read-only here and become assigned availability. Rejected/cancelled registrations may be submitted again if current BE rules allow. Client checks profile readiness, start/deadline and capacity for guidance; BE remains authoritative. Uncertain writes/conflicts require explicit fresh reads before another attempt. Failed note input remains in memory with a dirty-navigation guard. Historical records retain their status if their shift cannot be read.
 
-`API_BASE_URL` is a compile-time dart define pointing to the gateway origin without
-`/api/v1`; Android emulator default is `http://10.0.2.2:8080`. Android debug permits
-HTTP for local development; release disables cleartext. iOS uses HTTPS under ATS.
-Release signing/store publication is not configured. Windows cannot build iOS.
+Live-BE deviation (01/11/2026): ProviderService work-shift search returns HTTP 503/code 4004 and PostgreSQL 42P18 (untyped parameter $7) when a non-null fromDate is supplied; adding toDate also fails. The same scoped GET /work-shifts?status=OPEN&page=...&size=20 returns HTTP 200. Mobile therefore omits optional date filters, loads all scoped OPEN and own-registration pages, filters started shifts locally using UTC+07, and computes accurate local pagination for the upcoming board. Server OPEN states remain unchanged; existing registrations remain readable in My registrations. Deadline/full guidance is explicit. Detail and BE still prevent invalid registrations. No silent retry, widened center scope or BE source change is used. A permanent BE correction needs typed/dynamic optional-date predicates.
 
-Tests use a fake Dio transport to exercise real client/repository behavior and
-widget flows; no test data is loaded by production screens. Reference source
-paths and the approved scope are in `docs/superpowers/specs/`.
+Acknowledgement posts /booking-occurrences/{id}/acknowledge. Starting posts /care-sessions and navigates using the returned sessionId. Session service uses configured startWindow/missedGrace (30 minutes each by default); late boundary and endAt are exclusive. Only IN_PROGRESS permits task/note edits. DONE counts as completed, SKIPPED requires a reason and is counted separately. Ending has confirmation; backend moves the occurrence to COMPLETED.
+
+Report lookup scans all booking pages for sessionId. The editor matches FE with two text areas: summary (required, max 4000) and recommendations (optional, max 2000). Overall condition remains an explicit required choice because the BE DTO requires it; no clinical default is invented. Existing meal/medication/mobility/mood notes remain in the typed model and update payload, and in submitted report read-only details, so simplifying the editor does not erase previous content. PUT includes optimistic version. A saved draft ID is retained before upload/submit. Submission requires ENDED and explicit confirmation, and SUBMITTED becomes read-only. BE emits REPORT_SUBMITTED to the booking's customer; mobile does not send separate SMS/email or choose recipients outside backend scope. No clinical condition or vital value is preselected. Max five JPEG/PNG/WebP report photos, each <=10 MB; server validates content/scope.
+
+Unknown-result writes/conflicts block repeats until server reconciliation. Forms remain in memory on failure and guard leaving unsaved content. Backend remains final authority for states, rules, time and authorization.
+
+Availability cancellation uses the existing caregiver contract: `PATCH /caregivers/schedules/{id}/status` with `status: CANCELLED`, a trimmed required reason (maximum 500 characters) and the schedule's actual optimistic `version`. Schedule list/write responses are parsed at the profile boundary; no version is invented. The provider screen labels SCHEDULED as an open availability slot without changing Booking's assigned-visit labels. As in FE, cancellation is offered for SCHEDULED slots whose Vietnam-local end time has not passed; BE rechecks ownership, version, state and assigned bookings and rejects booked slots (409/code4415). Successful cancellation also cancels the linked registration in BE and can reopen the work shift; mobile does not perform those secondary writes itself.
+
+Cancellation requires an explicit reason/confirmation modal. Pending writes lock the form, failed inputs stay in memory, closing a dirty modal requires discard confirmation and uncertain/conflicting writes cannot repeat until an explicit fresh read reconciles the selected slot. No automatic write retry, local-success simulation or direct Booking cancellation is used.
+
+Report photos may be selected before a draft exists. Pending content URIs/metadata stay in component memory with no copied patient files. The report repository owns Save/Submit's save-draft → checkpoint ID/version → upload batch → checkpoint attachments workflow; Submit then uses the returned report ID after confirmation. Files are validated before any write and again against the saved draft's attachment count. Malformed successful report write responses are uncertain, never a simulated failure safe to replay. Reconciliation preserves local text/selections and adopts the server ID/version. After an uncertain upload, server photos are shown and the uncertain local batch must be explicitly removed before another selection/upload; BE supplies no upload idempotency key or reliable file correlation. No writes are automatically retried. Selection/removal alone makes no API write, and pending selections participate in dirty-form guards.
+
+## Calendar and notification lifecycle
+
+Provider workDate/startTime/endTime remain Vietnam local UTC+07. Booking timestamps remain Instants and format in device timezone; from/to query dates and today's count use the Vietnam calendar. Home/schedule refresh on resume/date changes.
+
+Foreground NotificationFeed polls unread count/latest page every 30 seconds, seeds first reads silently and tracks <=200 IDs plus timestamp watermark in memory. Polls serialize; background/disposal invalidates late results. Logout resets the protected subtree/feed. Inbox pages support mark-read/read-all. Only supported reference types with valid UUIDs navigate; report references resolve through authorized report GET. Banner text is generic.
+
+BE exposes SSE but no FCM registration contract; this implementation provides foreground inbox/badge/banner, not background OS push.
+
+## Native build and configuration
+
+React Native0.88.1, React19.3.0 and Community CLI20.2.0 are locked in package-lock.json. The maintained android/ source follows the matching official CLI template; generated Gradle/CMake build output and local SDK/signing configuration are ignored. Application ID stays vn.careconnect.careconnect_mobile. Keychain, documents picker, Feather static fonts and community geolocation are autolinked. Location requests are foreground-only and bounded to six seconds, with approximate Android permission accepted; denial sends no coordinates. There is no iOS target.
+
+API_URL in ignored .env is a public gateway origin, inlined by Babel; no other environment fields are bundled. Debug defaults to http://10.0.2.2:8080; LDPlayer supports adb reverse and127.0.0.1. Main Android manifest forbids cleartext, with a debug-only HTTP override; the app also enforces HTTPS API origins in release. Production signing/release is not configured and release is not signed using the debug key. scripts/build-android.ps1 assembles the native debug APK directly; it uses Metro8090, with the port also fixed in Gradle to avoid Identity8081. There is no Expo launcher, prebuild or EAS workflow. Restart Metro with reset-cache after changing bundled public environment configuration.
+
+## Copy and verification
+
+Vietnamese defaults, English available; useApp().t replaces Flutter context.t. Shared controls use safe areas, scrolling keyboard forms and system font scaling. API-provided free text stays unchanged.
+
+Formatting, ESLint, strict tsc, behavioral/contract/native-component Jest tests and Android debug build replace Dart/Flutter checks. Test transport fixtures/native mocks are isolated in tests. README/progress ledger distinguishes fake-transport verification, native UI smoke testing and live-BE validation. Native CLI config and doctor replace the retired Expo diagnostics.
+
+BE: C:/Users/Juuga/Documents/MSS301/BE; FE: C:/Users/Juuga/Documents/MSS301/FE-careconnect, both read-only. Scope: docs/superpowers/specs/2026-11-01-react-native-caregiver-design.md. No commits/pushes/merges/releases unless requested.
+
+The board uses compact date/time-first cards, a direct Register action and already-registered status; all registration pages are checked before showing actions. Foreground polling runs only while focused, waits for the previous load to finish and retains visible content during refresh. Read failures keep error/retry states. A new future shift cannot be hidden behind earlier pages of past OPEN rows.

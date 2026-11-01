@@ -1,3 +1,5 @@
+> HISTORICAL — Flutter implementation retired on 01/11/2026. Active design: 2026-11-01-react-native-caregiver-design.md.
+
 # SDD ledger — plan: docs/superpowers/plans/2026-10-30-caregiver-mobile.md
 
 - Design approved and implementation explicitly requested by user.

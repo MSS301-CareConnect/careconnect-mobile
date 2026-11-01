@@ -1,3 +1,5 @@
+> HISTORICAL — Flutter implementation retired on 01/11/2026. Active design: 2026-11-01-react-native-caregiver-design.md.
+
 # Thiết kế CareConnect Mobile cho caregiver
 
 Ngày: 30/10/2026. Trạng thái: người dùng đã duyệt và yêu cầu triển khai.

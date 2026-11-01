@@ -1,80 +1,55 @@
 # Chạy CareConnect trên LDPlayer
 
-Người dùng tự cài LDPlayer; cấu hình này không cài đặt, cập nhật hay tạo emulator.
-Lưu LDPlayer ở ngoài repo, ví dụ `D:\LDPlayer\LDPlayer9`. LDPlayer 9 bản 64-bit
-(Android 9) phù hợp với minSdk 24 của CareConnect. Không cần bật root.
+Thực hiện tại thư mục `careconnect-mobile`. Mở LDPlayer trước và chỉ giữ một emulator đang chạy. BE/gateway cần chạy trên máy ở cổng8080.
 
-## 1. Thiết lập LDPlayer
+## 1. Kiểm tra file .env
 
-- Màn hình điện thoại dọc: 720 × 1280, DPI 240.
-- CPU: 2 nhân; RAM: 2048 MB; FPS: 30 là đủ để thử app.
-- Settings → Other settings/Others → ADB debugging → Open/Enable local connection.
-- Lưu cấu hình và khởi động lại emulator nếu được yêu cầu.
+Mở file `.env` ngay trong thư mục dự án, đặt dòng này:
 
-Tên mục có thể khác giữa phiên bản/ngôn ngữ. Chỉ bật kết nối ADB cục bộ.
-Không cần đăng nhập Google để cài app bằng Flutter/ADB.
+```dotenv
+API_URL=http://127.0.0.1:8080
+```
 
-## 2. Kết nối app
+Nếu chưa có `.env`, sao chép `.env.example` thành `.env`, rồi sửa dòng trên. Nếu vừa lấy code/cài máy mới, chạy `npm ci` một lần.
 
-Trong terminal tại repo:
+## 2. Terminal thứ nhất: kết nối và chạy Metro
+
+Copy hai lệnh sau vào PowerShell tại thư mục dự án:
 
 ```powershell
-flutter pub get --enforce-lockfile
 .\scripts\connect-ldplayer.ps1
-flutter run -d 127.0.0.1:5555 --dart-define=API_BASE_URL=http://127.0.0.1:8080
+npm start
 ```
 
-Hoặc chọn **CareConnect - LDPlayer (local API)** trong Run and Debug của VS Code
-và bấm F5. Cấu hình này tự chạy script kết nối trước khi khởi động app.
+Script tự tìm `adb.exe` và dùng thiết bị đã kết nối nếu chỉ có một thiết bị. Không cần nhập đường dẫn SDK, `-AdbPath` hoặc `-Address`. Khi thấy `Dev server ready`, giữ Terminal này mở.
 
-Nếu dùng Android Studio: mở thư mục gốc repo, chạy script trong Terminal, chọn
-thiết bị LDPlayer rồi Run cấu hình Flutter với entrypoint `lib/main.dart` và
-**Additional run args** là `--dart-define=API_BASE_URL=http://127.0.0.1:8080`.
-Xem [các bước Android Studio trong README](../README.md#chạy-bằng-android-studio).
+Nếu vừa đổi `.env`, dùng `npm start -- --reset-cache` thay cho `npm start`.
 
-Script dùng `adb.exe` trong Android SDK, kiểm tra Android API >= 24, rồi thực hiện
-`adb reverse tcp:8080 tcp:8080` cho đúng thiết bị `127.0.0.1:5555`. Vì vậy
-`127.0.0.1:8080` trong app trỏ về gateway trên PC, không phụ thuộc địa chỉ NAT
-của LDPlayer và không yêu cầu mở firewall cho mạng LAN. Mọi API vẫn qua `/api/v1/**`.
+## 3. Terminal thứ hai: cài và mở CareConnect
 
-Chạy lại script sau mỗi lần khởi động lại emulator. Nếu script không tìm được SDK:
+Mở một Terminal khác, vẫn tại thư mục `careconnect-mobile`, chạy:
 
 ```powershell
-.\scripts\connect-ldplayer.ps1 -AdbPath 'C:\duong-dan-sdk\platform-tools\adb.exe'
+npm run android
 ```
 
-Nếu có nhiều instance, tài liệu LDPlayer quy định port `5555 + index * 2`.
-Ví dụ instance index 1:
+Chờ build/cài xong; CareConnect sẽ tự mở trong LDPlayer. Lần đầu build có thể lâu. Đăng nhập bằng tài khoản Caregiver.
 
-```powershell
-.\scripts\connect-ldplayer.ps1 -Address 127.0.0.1:5557
-flutter run -d 127.0.0.1:5557 --dart-define=API_BASE_URL=http://127.0.0.1:8080
-```
+Nếu đang mở nhiều emulator/điện thoại, dùng `npm run android -- --list-devices` để chọn đúng LDPlayer.
 
-Đồng thời đổi `deviceId` trong `.vscode/launch.json` và thêm
-`-Address 127.0.0.1:5557` vào args của task nếu muốn dùng F5 cho instance này.
+## Những lần mở app sau
 
-## 3. Kiểm tra BE
+1. Mở LDPlayer.
+2. Chạy hai lệnh ở bước2.
+3. Bấm biểu tượng **CareConnect** trong LDPlayer.
 
-Gateway phải chạy trên PC tại `http://127.0.0.1:8080`. Kiểm tra từ PC:
+Sửa giao diện JavaScript/TypeScript dùng Fast Refresh; không cần chạy lại `npm run android` mỗi lần. Chỉ build/cài lại khi đổi native code hoặc native dependency.
 
-```powershell
-curl.exe http://127.0.0.1:8080/actuator/health
-```
+## Nếu gặp lỗi
 
-Đã mở màn đăng nhập trên LDPlayer Android API 28 với màn hình dọc 720 × 1280,
-DPI 240. Chưa xác minh đăng nhập/giao dịch với BE thật. Khi gateway chưa chạy,
-app vẫn mở màn đăng nhập nếu chưa có phiên đã lưu; thao tác đăng nhập cần BE.
+- **Không tìm thấy ADB:** Android Studio → SDK Manager → SDK Tools → cài Android SDK Platform-Tools. Script tự tìm SDK mặc định trong `%LOCALAPPDATA%\Android\Sdk`.
+- **Không thấy thiết bị:** mở LDPlayer, bật ADB debugging cục bộ trong cài đặt LDPlayer, rồi chạy lại script.
+- **Không kết nối máy chủ:** kiểm tra BE/gateway8080 đang chạy, `.env` đúng như bước1 và chạy lại script kết nối.
+- **INSTALL_FAILED_UPDATE_INCOMPATIBLE:** APK cũ và mới dùng khóa ký khác nhau. Giữ bản cũ nếu còn dữ liệu cần giữ; không tự gỡ/xóa dữ liệu để xử lý.
 
-APK cũ trong `artifacts` dùng cấu hình Android Emulator mặc định. Để dùng cấu hình
-LDPlayer/ADB reverse này, chạy bằng lệnh Flutter ở trên hoặc build lại:
-
-```powershell
-flutter build apk --debug --dart-define=API_BASE_URL=http://127.0.0.1:8080
-```
-
-Build/cache Flutter sẽ được tạo lại khi chạy. Dữ liệu LDPlayer nằm ngoài repo;
-dùng `flutter clean` để dọn build/cache sau khi thử xong nếu cần.
-
-Nguồn: [ldconsole chính thức](https://vnm.ldplayer.net/support/huong-dan-su-dung-ldconsole-ldplayer.html),
-[Android ADB reverse](https://developer.android.com/develop/ui/views/layout/webapps/access-local-server).
+Hướng dẫn SDK/JDK, Android Studio Emulator và kiểm thử chức năng: [RUN_MOBILE.md](RUN_MOBILE.md).

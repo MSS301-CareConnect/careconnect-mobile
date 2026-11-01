@@ -1,3 +1,5 @@
+> HISTORICAL — Flutter implementation retired on 01/11/2026. Active design: 2026-11-01-react-native-caregiver-design.md.
+
 # CareConnect Caregiver Mobile Implementation Plan
 
 > **For agentic workers:** Use superpowers:executing-plans inline, task by task. User approved the design and instructed implementation on 2026-10-30.

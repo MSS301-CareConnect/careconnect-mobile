@@ -1,58 +1,39 @@
 [CmdletBinding()]
-param(
-    [ValidatePattern('^(127\.0\.0\.1|localhost):[0-9]{1,5}$')]
-    [string]$Address = '127.0.0.1:5555',
-    [ValidateRange(1024, 65535)]
-    [int]$GatewayPort = 8080,
-    [string]$AdbPath
-)
-
-$ErrorActionPreference = 'Stop'
-
+param([string]$AdbPath,[string]$Address='127.0.0.1:5555',[string]$DeviceId)
+$ErrorActionPreference='Stop'
 if (-not $AdbPath) {
-    $sdkRoots = @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT)
-    if ($env:LOCALAPPDATA) {
-        $sdkRoots += Join-Path $env:LOCALAPPDATA 'Android\Sdk'
-    }
-    foreach ($sdkRoot in $sdkRoots) {
-        if ($sdkRoot) {
-            $candidate = Join-Path $sdkRoot 'platform-tools\adb.exe'
-            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-                $AdbPath = $candidate
-                break
-            }
-        }
-    }
+  $candidates=@()
+  if ($env:ANDROID_HOME) { $candidates+=Join-Path $env:ANDROID_HOME 'platform-tools/adb.exe' }
+  if ($env:ANDROID_SDK_ROOT) { $candidates+=Join-Path $env:ANDROID_SDK_ROOT 'platform-tools/adb.exe' }
+  if ($env:LOCALAPPDATA) { $candidates+=Join-Path $env:LOCALAPPDATA 'Android/Sdk/platform-tools/adb.exe' }
+  $fromPath=Get-Command adb.exe -ErrorAction SilentlyContinue
+  if ($fromPath) { $candidates+=$fromPath.Source }
+  $AdbPath=$candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
-
 if (-not $AdbPath -or -not (Test-Path -LiteralPath $AdbPath -PathType Leaf)) {
-    throw 'Android SDK adb.exe was not found. Set ANDROID_HOME or pass -AdbPath.'
+  throw 'Khong tim thay adb.exe. Cai Android SDK Platform-Tools trong Android Studio; chay lai script khong truyen duong dan mau.'
 }
-
-function Invoke-AndroidBridge {
-    param([string[]]$AdbArguments)
-    $response = & $AdbPath @AdbArguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "ADB failed: $($response -join [Environment]::NewLine)"
-    }
-    return ($response -join [Environment]::NewLine).Trim()
+$connected=@(& $AdbPath devices)
+if ($LASTEXITCODE -ne 0) { throw 'Khong doc duoc danh sach thiet bi ADB.' }
+$devices=@($connected | ForEach-Object { if ($_ -match '^([^\s]+)\s+device(?:\s|$)') { $matches[1] } })
+$serial=$DeviceId
+if (-not $serial -and -not $PSBoundParameters.ContainsKey('Address')) {
+  if ($devices.Count -eq 1) { $serial=$devices[0] }
+  elseif ($Address -in $devices) { $serial=$Address }
 }
-
-Write-Host 'Open LDPlayer and enable ADB debugging: local connection. Root is not required.'
-Write-Host (Invoke-AndroidBridge -AdbArguments @('connect', $Address))
-$deviceState = Invoke-AndroidBridge -AdbArguments @('-s', $Address, 'get-state')
-if ($deviceState -ne 'device') {
-    throw "LDPlayer is not ready ($deviceState). Start it and check local ADB debugging."
+if (-not $serial) {
+  & $AdbPath connect $Address
+  if ($LASTEXITCODE -ne 0) { throw 'Chua ket noi LDPlayer. Mo LDPlayer va bat ADB debugging cuc bo.' }
+  $serial=$Address
 }
-
-$apiLevel = Invoke-AndroidBridge -AdbArguments @('-s', $Address, 'shell', 'getprop', 'ro.build.version.sdk')
-if ($apiLevel -notmatch '^\d+$' -or [int]$apiLevel -lt 24) {
-    throw 'CareConnect requires Android 7.0/API 24 or newer. Use LDPlayer 9 (64-bit) or newer.'
+$state=(& $AdbPath -s $serial get-state 2>$null)
+if ($LASTEXITCODE -ne 0 -or $state -ne 'device') {
+  throw 'LDPlayer chua san sang. Mo LDPlayer; chi giu mot emulator, roi chay lai script.'
 }
-
-$mapping = "tcp:$GatewayPort"
-$null = Invoke-AndroidBridge -AdbArguments @('-s', $Address, 'reverse', $mapping, $mapping)
-Write-Host "Connected: $Address (Android API $apiLevel)"
-Write-Host "Gateway mapping: LDPlayer 127.0.0.1:$GatewayPort -> PC 127.0.0.1:$GatewayPort"
-Write-Host "Run: flutter run -d $Address --dart-define=API_BASE_URL=http://127.0.0.1:$GatewayPort"
-Write-Host 'Re-run this script after restarting LDPlayer. No emulator data is stored in this repo.'
+foreach ($port in @(8080,8090)) {
+  & $AdbPath -s $serial reverse "tcp:$port" "tcp:$port"
+  if ($LASTEXITCODE -ne 0) { throw "Khong ket noi duoc cong $port tren $serial." }
+}
+Write-Host "Da san sang: $serial"
+Write-Host 'Cua so nay: npm start'
+Write-Host 'Terminal thu hai, cung thu muc: npm run android'
