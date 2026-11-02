@@ -226,7 +226,7 @@ export function Badge({ status }: { status: string }) {
     <View
       style={[
         s.badge,
-        ['CANCELLED', 'MISSED', 'CUSTOMER_NO_SHOW', 'DECLINED'].includes(status) && {
+        ['CANCELLED', 'EXPIRED', 'CAREGIVER_MISSED', 'CUSTOMER_NO_SHOW', 'DECLINED'].includes(status) && {
           backgroundColor: '#FDECEA',
         },
       ]}
