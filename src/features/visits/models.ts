@@ -17,6 +17,8 @@ export type Visit = {
   bookingCode: string;
   startAt: string;
   endAt: string;
+  checkInOpensAt: string;
+  checkInClosesAt: string;
   status: string;
   name: string;
   address: string;
@@ -56,6 +58,8 @@ export function parseVisit(value: unknown): Visit {
     bookingCode: text(j.bookingCode),
     startAt: required(j.startAt),
     endAt: required(j.endAt),
+    checkInOpensAt: text(j.checkInOpensAt),
+    checkInClosesAt: text(j.checkInClosesAt),
     status: required(j.status),
     name: text(j.recipientName),
     address: text(j.serviceAddress),

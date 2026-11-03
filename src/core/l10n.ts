@@ -127,8 +127,8 @@ export const copy = {
   acknowledge: ['Xác nhận nhận ca', 'Accept visit'],
   start: ['Bắt đầu chăm sóc', 'Start care'],
   checkWindow: [
-    'Có thể bắt đầu từ 30 phút trước đến trước 30 phút sau giờ hẹn, trước giờ kết thúc. Máy chủ xác nhận thời gian hợp lệ.',
-    'Start from 30 minutes before to before 30 minutes after the appointment, before its end. The server validates the time.',
+    'Có thể bắt đầu trong khung giờ check-in do trung tâm đặt quanh giờ hẹn, trước giờ kết thúc. Máy chủ xác nhận thời gian hợp lệ.',
+    'Start within the check-in window your center set around the appointment, before its end. The server validates the time.',
   ],
   viewSession: ['Mở ca chăm sóc', 'Open care session'],
   activeCare: ['Đang chăm sóc', 'Care in progress'],

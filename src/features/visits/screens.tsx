@@ -297,7 +297,7 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
                     <Button
                       label={t('start')}
                       icon="play"
-                      disabled={write.uncertain || !checkInAllowed(visit.startAt, visit.endAt, now)}
+                      disabled={write.uncertain || !checkInAllowed(visit.startAt, visit.endAt, now, visit.checkInOpensAt, visit.checkInClosesAt)}
                       loading={write.busy}
                       onPress={() =>
                         void write.run(
