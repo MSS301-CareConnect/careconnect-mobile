@@ -14,28 +14,43 @@ function SignedIn({ children }: { children: React.ReactNode }) {
   const { user } = useApp();
   return user ? <>{children}</> : <Text>Signed out</Text>;
 }
-function fixture({ failWrite = false, gate }: { failWrite?: boolean; gate?: Promise<void> } = {}) {
+const currentDevice = 'Chrome · Android';
+const otherDevice = 'Firefox · Windows 10/11';
+const otherSignOut = `Đăng xuất: ${otherDevice}, 192.0.2.2`;
+const bulkSignOut = 'Đăng xuất tất cả thiết bị khác';
+const defaultSessions = [
+  {
+    sessionId: 'current',
+    deviceId: 'My Android',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36',
+    ip: '192.0.2.1',
+    createdAt: '2026-11-01T00:00:00Z',
+    lastActiveAt: '2026-11-05T01:00:00Z',
+    isCurrent: true,
+  },
+  {
+    sessionId: 'other',
+    deviceId: 'Other phone',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/130.0',
+    ip: '192.0.2.2',
+    createdAt: '2026-11-01T00:00:00Z',
+    lastActiveAt: '2026-11-04T01:00:00Z',
+    isCurrent: false,
+  },
+];
+function fixture({
+  failWrite = false,
+  gate,
+  initialSessions = defaultSessions,
+}: {
+  failWrite?: boolean;
+  gate?: Promise<void>;
+  initialSessions?: typeof defaultSessions;
+} = {}) {
   let token: string | null = 'refresh';
-  let sessions = [
-    {
-      sessionId: 'current',
-      deviceId: 'My Android',
-      userAgent: 'Android app',
-      createdAt: '2026-11-01T00:00:00Z',
-      lastActiveAt: '2026-11-05T01:00:00Z',
-      isCurrent: true,
-    },
-    {
-      sessionId: 'other',
-      deviceId: 'Other phone',
-      userAgent: 'Other Android app',
-      createdAt: '2026-11-01T00:00:00Z',
-      lastActiveAt: '2026-11-04T01:00:00Z',
-      isCurrent: false,
-    },
-  ];
+  let sessions = initialSessions.map((session) => ({ ...session }));
   const calls: { method: string; path: string }[] = [];
-  const controls = { failWrite, failRead: false };
+  const controls = { failWrite, failRead: false, failSessionId: '' };
   const api = new ApiClient(
     'http://test',
     {
@@ -57,7 +72,8 @@ function fixture({ failWrite = false, gate }: { failWrite?: boolean; gate?: Prom
         result = sessions;
       } else if (path.startsWith('/auth/sessions/') && method === 'DELETE') {
         await gate;
-        if (controls.failWrite) throw new TypeError('Interrupted');
+        if (controls.failWrite || path.endsWith(`/${controls.failSessionId}`))
+          throw new TypeError('Interrupted');
         sessions = sessions.filter((item) => item.sessionId !== path.split('/').at(-1));
         result = null;
       } else return new Response(JSON.stringify({ code: 404 }), { status: 404 });
@@ -86,7 +102,7 @@ async function open(f: ReturnType<typeof fixture>) {
       </AppProvider>
     </SafeAreaProvider>,
   );
-  await screen.findByText('Other Android app');
+  await screen.findByText(currentDevice);
   return screen;
 }
 async function yes(alert: jest.SpiedFunction<typeof Alert.alert>) {
@@ -98,10 +114,10 @@ test('revoking another session requires confirmation and refreshes the actual li
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   const screen = await open(f);
   try {
-    await fireEvent.press(screen.getByRole('button', { name: 'Thu hồi phiên: Other phone' }));
+    await fireEvent.press(screen.getByRole('button', { name: otherSignOut }));
     expect(f.writes()).toHaveLength(0);
     await yes(alert);
-    await waitFor(() => expect(screen.queryByText('Other Android app')).toBeNull());
+    await waitFor(() => expect(screen.queryByText(otherDevice)).toBeNull());
     expect(f.writes()).toEqual([{ method: 'DELETE', path: '/auth/sessions/other' }]);
     expect(f.token()).not.toBeNull();
   } finally {
@@ -110,15 +126,25 @@ test('revoking another session requires confirmation and refreshes the actual li
   }
 });
 
-test('revoking the current session clears memory and secure token without a second logout request', async () => {
+test('the current device has no row sign-out and confirmed sign-out of others preserves this session', async () => {
   const f = fixture();
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   const screen = await open(f);
   try {
-    await fireEvent.press(screen.getByRole('button', { name: 'Thu hồi phiên: My Android' }));
+    expect(screen.getByText('Thiết bị này')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: `Đăng xuất: ${currentDevice}, 192.0.2.1` }),
+    ).toBeNull();
+    expect(screen.queryByText(defaultSessions[0]!.userAgent)).toBeNull();
+    expect(screen.queryByText('My Android')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: bulkSignOut }));
+    expect(f.writes()).toHaveLength(0);
     await yes(alert);
-    await screen.findByText('Signed out');
-    expect(f.token()).toBeNull();
+    await waitFor(() => expect(screen.queryByText(otherDevice)).toBeNull());
+    expect(screen.getByText(currentDevice)).toBeTruthy();
+    expect(screen.queryByText('Signed out')).toBeNull();
+    expect(f.token()).not.toBeNull();
+    expect(f.writes()).toEqual([{ method: 'DELETE', path: '/auth/sessions/other' }]);
     expect(f.calls.some((call) => call.path === '/auth/logout')).toBe(false);
   } finally {
     alert.mockRestore();
@@ -131,22 +157,22 @@ test('uncertain revocation retains the list and blocks repeated writes until exp
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   const screen = await open(f);
   try {
-    await fireEvent.press(screen.getByRole('button', { name: 'Thu hồi phiên: Other phone' }));
+    await fireEvent.press(screen.getByRole('button', { name: otherSignOut }));
     await yes(alert);
     await screen.findByText(/Chưa xác định được kết quả/);
-    expect(screen.getByText('Other Android app')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Thu hồi phiên: Other phone' })).toBeDisabled();
+    expect(screen.getByText(otherDevice)).toBeTruthy();
+    expect(screen.getByRole('button', { name: otherSignOut })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: otherSignOut }));
+    expect(f.writes()).toHaveLength(1);
     f.controls.failRead = true;
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại phiên đăng nhập' }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Tải lại phiên đăng nhập' })).toBeEnabled(),
     );
-    expect(screen.getByRole('button', { name: 'Thu hồi phiên: Other phone' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: otherSignOut })).toBeDisabled();
     f.controls.failRead = false;
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại phiên đăng nhập' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Thu hồi phiên: Other phone' })).toBeEnabled(),
-    );
+    await waitFor(() => expect(screen.getByRole('button', { name: otherSignOut })).toBeEnabled());
     expect(f.writes()).toHaveLength(1);
   } finally {
     alert.mockRestore();
@@ -161,17 +187,20 @@ test('pending revoke locks other sessions and confirmed revoke with failed refre
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   const screen = await open(f);
   try {
-    await fireEvent.press(screen.getByRole('button', { name: 'Thu hồi phiên: Other phone' }));
+    await fireEvent.press(screen.getByRole('button', { name: otherSignOut }));
     await yes(alert);
-    expect(screen.getByRole('button', { name: 'Thu hồi phiên: My Android' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: otherSignOut })).toBeDisabled();
+    expect(screen.getByRole('button', { name: bulkSignOut })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: otherSignOut }));
+    expect(f.writes()).toHaveLength(1);
     f.controls.failRead = true;
     await act(async () => release());
     await screen.findByText(/Tải lại danh sách để kiểm tra trạng thái/);
-    expect(screen.getByText('Other Android app')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Thu hồi phiên: Other phone' })).toBeDisabled();
+    expect(screen.getByText(otherDevice)).toBeTruthy();
+    expect(screen.getByRole('button', { name: otherSignOut })).toBeDisabled();
     f.controls.failRead = false;
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại phiên đăng nhập' }));
-    await waitFor(() => expect(screen.queryByText('Other Android app')).toBeNull());
+    await waitFor(() => expect(screen.queryByText(otherDevice)).toBeNull());
     expect(f.writes()).toHaveLength(1);
   } finally {
     release();
@@ -179,3 +208,107 @@ test('pending revoke locks other sessions and confirmed revoke with failed refre
     await screen.unmount();
   }
 });
+
+test('confirmed sign-out of others revokes sequentially and never targets the current session', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const f = fixture({
+    gate,
+    initialSessions: [
+      ...defaultSessions,
+      { ...defaultSessions[1]!, sessionId: 'older', lastActiveAt: '2026-11-03T01:00:00Z' },
+    ],
+  });
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  const screen = await open(f);
+  try {
+    await fireEvent.press(screen.getByRole('button', { name: bulkSignOut }));
+    expect(f.writes()).toHaveLength(0);
+    await yes(alert);
+    expect(f.writes()).toEqual([{ method: 'DELETE', path: '/auth/sessions/other' }]);
+    expect(screen.getByRole('button', { name: bulkSignOut })).toBeDisabled();
+    await act(async () => release());
+    await waitFor(() => expect(screen.queryAllByText(otherDevice)).toHaveLength(0));
+    expect(f.writes()).toEqual([
+      { method: 'DELETE', path: '/auth/sessions/other' },
+      { method: 'DELETE', path: '/auth/sessions/older' },
+    ]);
+    expect(screen.getByText(currentDevice)).toBeTruthy();
+    expect(f.token()).not.toBeNull();
+  } finally {
+    release();
+    alert.mockRestore();
+    await screen.unmount();
+  }
+});
+
+test('a partial bulk failure stops at the failed session and requires fresh reconciliation before another batch', async () => {
+  const f = fixture({
+    initialSessions: [
+      ...defaultSessions,
+      { ...defaultSessions[1]!, sessionId: 'failed', lastActiveAt: '2026-11-03T01:00:00Z' },
+      { ...defaultSessions[1]!, sessionId: 'remaining', lastActiveAt: '2026-11-02T01:00:00Z' },
+    ],
+  });
+  f.controls.failSessionId = 'failed';
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  const screen = await open(f);
+  try {
+    await fireEvent.press(screen.getByRole('button', { name: bulkSignOut }));
+    await yes(alert);
+    await screen.findByText(/Chưa xác định được kết quả/);
+    expect(f.writes()).toEqual([
+      { method: 'DELETE', path: '/auth/sessions/other' },
+      { method: 'DELETE', path: '/auth/sessions/failed' },
+    ]);
+    expect(screen.getAllByText(otherDevice)).toHaveLength(3);
+    expect(screen.getByRole('button', { name: bulkSignOut })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: bulkSignOut }));
+    expect(alert).toHaveBeenCalledTimes(1);
+    f.controls.failRead = true;
+    await fireEvent.press(screen.getByRole('button', { name: 'Tải lại phiên đăng nhập' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Tải lại phiên đăng nhập' })).toBeEnabled(),
+    );
+    expect(screen.getByRole('button', { name: bulkSignOut })).toBeDisabled();
+    expect(f.writes()).toHaveLength(2);
+    f.controls.failRead = false;
+    f.controls.failSessionId = '';
+    await fireEvent.press(screen.getByRole('button', { name: 'Tải lại phiên đăng nhập' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: bulkSignOut })).toBeEnabled());
+    expect(screen.getAllByText(otherDevice)).toHaveLength(2);
+    expect(f.writes()).toHaveLength(2);
+    await fireEvent.press(screen.getByRole('button', { name: bulkSignOut }));
+    expect(f.writes()).toHaveLength(2);
+    await yes(alert);
+    await waitFor(() => expect(screen.queryAllByText(otherDevice)).toHaveLength(0));
+    expect(f.writes().slice(2)).toEqual([
+      { method: 'DELETE', path: '/auth/sessions/failed' },
+      { method: 'DELETE', path: '/auth/sessions/remaining' },
+    ]);
+    expect(f.token()).not.toBeNull();
+  } finally {
+    alert.mockRestore();
+    await screen.unmount();
+  }
+});
+
+test.each([0, 2])(
+  'bulk sign-out is unavailable when the server identifies %i current sessions',
+  async (count) => {
+    const f = fixture({
+      initialSessions: defaultSessions.map((session, index) => ({
+        ...session,
+        isCurrent: index < count,
+      })),
+    });
+    const screen = await open(f);
+    try {
+      expect(screen.queryByRole('button', { name: bulkSignOut })).toBeNull();
+      expect(f.writes()).toHaveLength(0);
+      expect(f.token()).not.toBeNull();
+    } finally {
+      await screen.unmount();
+    }
+  },
+);

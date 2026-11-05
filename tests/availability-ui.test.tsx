@@ -45,7 +45,12 @@ function fixture(
   let token: string | null = 'refresh';
   const api = new ApiClient(
     'http://test',
-    { get: async () => token, set: async (value) => void (token = value) },
+    {
+      get: async () => token,
+      set: async (value) => {
+        token = value;
+      },
+    },
     async (input, init) => {
       const url = new URL(String(input));
       const path = url.pathname.replace('/api/v1', '');
@@ -53,6 +58,8 @@ function fixture(
       if (path === '/auth/refresh') result = { accessToken: 'a', refreshToken: 'r' };
       else if (path === '/users/me')
         result = { id: 'user', fullName: 'Test caregiver', roles: ['CAREGIVER'], status: 'ACTIVE' };
+      else if (path === '/caregivers/me') result = { id: 'caregiver' };
+      else if (path === '/caregivers/caregiver/time-offs') result = [];
       else if (path === '/notifications/unread-count') result = { count: 0 };
       else if (path === '/notifications' || path === '/booking-occurrences') result = page([]);
       else if (path === '/caregivers/me/schedules') {
@@ -94,12 +101,25 @@ function fixture(
       return new Response(JSON.stringify({ code: 200, result }), { status: 200 });
     },
   );
-  return { api, controls, writes, reads };
+  return { api, controls, writes, reads, date: slot.workDate };
 }
 
-async function openAvailability(f: ReturnType<typeof fixture>) {
-  const screen = await render(<App client={f.api} />);
-  await fireEvent.press(await screen.findByRole('tab', { name: /Lịch rảnh/ }));
+async function openAvailability(f: ReturnType<typeof fixture>, paginated = false) {
+  await f.api.restore();
+  const Stack = createNativeStackNavigator<Routes>();
+  const screen = await render(
+    <AppProvider client={f.api}>
+      <NavigationContainer>
+        <Stack.Navigator>
+          <Stack.Screen
+            name="ProviderSchedule"
+            initialParams={paginated ? undefined : { scheduleId: 'slot' }}
+            component={ProviderScheduleScreen}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </AppProvider>,
+  );
   await screen.findByText('Availability note from server');
   return screen;
 }
@@ -311,7 +331,7 @@ test('a successful server response stays cancelled when the following list refre
 
 test('cancellation on a later page reconciles that page and never reuses a first-page record', async () => {
   const f = fixture({ secondPage: true, failure: 'conflict' });
-  const screen = await openAvailability(f);
+  const screen = await openAvailability(f, true);
   try {
     await fireEvent.press(screen.getByRole('button', { name: 'Tiếp' }));
     await fireEvent.press(await screen.findByRole('button', { name: 'Hủy khung rảnh' }));
@@ -339,7 +359,7 @@ test('approved-shift link fetches the target schedule beyond page one before wit
         <Stack.Navigator>
           <Stack.Screen
             name="ProviderSchedule"
-            initialParams={{ scheduleId: 'slot' }}
+            initialParams={{ scheduleId: 'slot', cancel: true }}
             component={ProviderScheduleScreen}
           />
         </Stack.Navigator>
@@ -361,6 +381,24 @@ test('approved-shift link fetches the target schedule beyond page one before wit
       reason: 'Withdraw approved shift',
       version: 7,
     });
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('day agenda opens availability details without launching the cancellation form', async () => {
+  const f = fixture();
+  const screen = await render(<App client={f.api} />);
+  try {
+    await fireEvent.press(await screen.findByRole('tab', { name: /Lịch làm việc/ }));
+    if (!screen.queryByRole('tab', { name: f.date }))
+      await fireEvent.press(screen.getByRole('button', { name: 'Tuần sau' }));
+    await fireEvent.press(screen.getByRole('tab', { name: f.date }));
+    await fireEvent.press(await screen.findByRole('button', { name: 'Xem chi tiết' }));
+    await screen.findByText('Availability note from server');
+    expect(screen.queryByLabelText('Lý do hủy khung rảnh')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Hủy khung rảnh' })).toBeTruthy();
+    expect(f.writes).toHaveLength(0);
   } finally {
     await screen.unmount();
   }

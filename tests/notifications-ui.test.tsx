@@ -184,11 +184,12 @@ async function confirmLast(alert: jest.SpiedFunction<typeof Alert.alert>) {
   await act(async () => alert.mock.calls.at(-1)?.[2]?.at(-1)?.onPress?.());
 }
 
-test('unread filter reaches the server and a row can be marked read or unread from fresh results', async () => {
+test('unread filter reaches the server and a selected notice can be marked read or unread from fresh results', async () => {
   const f = fixture();
   const screen = await open(f);
   try {
-    await fireEvent.press(screen.getByRole('button', { name: 'Chỉ chưa đọc' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Chỉ chưa đọc' }));
+    expect(screen.getByRole('tab', { name: 'Chỉ chưa đọc' })).toBeSelected();
     await waitFor(() => expect(screen.queryByText('Read notice')).toBeNull());
     expect(
       f.calls
@@ -196,17 +197,21 @@ test('unread filter reaches the server and a row can be marked read or unread fr
         .at(-1)
         ?.query.get('unreadOnly'),
     ).toBe('true');
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc' }));
     await waitFor(() => expect(screen.queryByText('Unread notice')).toBeNull());
-    await fireEvent.press(screen.getByRole('button', { name: 'Tất cả thông báo' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Tất cả thông báo' }));
     await screen.findByText('Unread notice');
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu chưa đọc: Unread notice' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu chưa đọc' }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' })).toBeTruthy(),
+      expect(screen.getByRole('checkbox', { name: 'Chọn trang này' })).toBeEnabled(),
     );
-    expect(f.writes().map((call) => [call.method, call.path])).toEqual([
-      ['PATCH', `/notifications/${firstId}/read`],
-      ['PATCH', `/notifications/${firstId}/unread`],
+    await fireEvent.press(screen.getByRole('tab', { name: 'Chỉ chưa đọc' }));
+    await screen.findByText('Unread notice');
+    expect(f.writes().map((call) => [call.method, call.path, call.body])).toEqual([
+      ['PATCH', '/notifications/read-state', { ids: [firstId], read: true }],
+      ['PATCH', '/notifications/read-state', { ids: [firstId], read: false }],
     ]);
   } finally {
     await screen.unmount();
@@ -218,8 +223,9 @@ test('selected visible notices use batch contracts and deletion waits for destru
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   const screen = await open(f);
   try {
-    await fireEvent.press(screen.getByRole('button', { name: 'Chọn trang này' }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu mục đã chọn là chưa đọc' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn trang này' }));
+    expect(screen.getByRole('checkbox', { name: 'Chọn trang này' })).toBeChecked();
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu chưa đọc' }));
     await waitFor(() => expect(f.writes()).toHaveLength(1));
     expect(f.writes()[0]).toMatchObject({
       method: 'PATCH',
@@ -227,10 +233,10 @@ test('selected visible notices use batch contracts and deletion waits for destru
       body: { ids: [firstId, secondId], read: false },
     });
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Chọn trang này' })).toBeEnabled(),
+      expect(screen.getByRole('checkbox', { name: 'Chọn trang này' })).toBeEnabled(),
     );
-    await fireEvent.press(screen.getByRole('button', { name: 'Chọn trang này' }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Xóa mục đã chọn' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn trang này' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Xóa đã chọn' }));
     expect(f.writes()).toHaveLength(1);
     await confirmLast(alert);
     await waitFor(() => expect(screen.queryByText('Unread notice')).toBeNull());
@@ -250,6 +256,8 @@ test('clear-read confirmation removes read notices across the account using the 
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   const screen = await open(f);
   try {
+    expect(screen.queryByRole('button', { name: 'Xóa thông báo đã đọc' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Thao tác khác' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Xóa thông báo đã đọc' }));
     expect(f.writes()).toHaveLength(0);
     await confirmLast(alert);
@@ -266,10 +274,11 @@ test('an uncertain write keeps cards visible and blocks repeats until an explici
   const f = fixture({ failWrite: true });
   const screen = await open(f);
   try {
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc' }));
     await screen.findByText(/Chưa xác định được kết quả/);
     expect(screen.getByText('Unread notice')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc' }));
     expect(f.writes()).toHaveLength(1);
     f.controls.failRead = true;
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại thông báo' }));
@@ -277,14 +286,15 @@ test('an uncertain write keeps cards visible and blocks repeats until an explici
       expect(screen.getByRole('button', { name: 'Tải lại thông báo' })).toBeEnabled(),
     );
     expect(screen.getByText('Unread notice')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc' })).toBeDisabled();
     f.controls.failRead = false;
     f.controls.failWrite = false;
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại thông báo' }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' })).toBeEnabled(),
+      expect(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' })).toBeEnabled(),
     );
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc' }));
     await waitFor(() => expect(f.writes()).toHaveLength(2));
   } finally {
     await screen.unmount();
@@ -297,16 +307,16 @@ test('pending notification writes lock other mutations, filters and duplicate ro
   const f = fixture({ gate });
   const screen = await open(f);
   try {
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' }));
-    expect(screen.getByRole('button', { name: 'Chỉ chưa đọc' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Xóa thông báo đã đọc' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc' }));
+    expect(screen.getByRole('tab', { name: 'Chỉ chưa đọc' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Xóa đã chọn' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc tất cả' })).toBeDisabled();
     expect(f.writes()).toHaveLength(1);
     await act(async () => release());
     await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Đánh dấu chưa đọc: Unread notice' }),
-      ).toBeEnabled(),
+      expect(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' })).toBeEnabled(),
     );
   } finally {
     release();
@@ -344,7 +354,9 @@ test.each([
     const f = fixture({ notice: { ...makeNotice(firstId, 'Unread notice'), ...link } });
     const screen = await open(f);
     try {
-      await fireEvent.press(screen.getByRole('button', { name: 'Xem chi tiết: Unread notice' }));
+      await fireEvent.press(
+        screen.getByRole('button', { name: 'Unread notice. Server-provided notice body' }),
+      );
       await waitFor(() =>
         expect(screen.navigation.getCurrentRoute()).toMatchObject({
           name: expectedScreen,
@@ -364,18 +376,19 @@ test('confirmed writes with a failed subsequent read retain cards but cannot be 
   const screen = await open(f);
   try {
     f.controls.failRead = true;
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc' }));
     await screen.findByText(/Tải lại thông báo để kiểm tra trạng thái/);
     expect(screen.getByText('Unread notice')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' })).toBeDisabled();
-    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc: Unread notice' }));
+    expect(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc tất cả' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Đánh dấu đã đọc tất cả' }));
     expect(f.writes()).toHaveLength(1);
     f.controls.failRead = false;
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại thông báo' }));
     await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Đánh dấu chưa đọc: Unread notice' }),
-      ).toBeEnabled(),
+      expect(screen.getByRole('checkbox', { name: 'Chọn thông báo: Unread notice' })).toBeEnabled(),
     );
   } finally {
     await screen.unmount();
@@ -390,12 +403,13 @@ test.each(['delete', 'markRead'] as const)(
     const screen = await open(f);
     try {
       if (action === 'markRead')
-        await fireEvent.press(screen.getByRole('button', { name: 'Chỉ chưa đọc' }));
+        await fireEvent.press(screen.getByRole('tab', { name: 'Chỉ chưa đọc' }));
       await fireEvent.press(screen.getByRole('button', { name: 'Tiếp' }));
       await screen.findByText('Last notice');
+      await fireEvent.press(screen.getByRole('checkbox', { name: 'Chọn thông báo: Last notice' }));
       await fireEvent.press(
         screen.getByRole('button', {
-          name: action === 'delete' ? 'Xóa: Last notice' : 'Đánh dấu đã đọc: Last notice',
+          name: action === 'delete' ? 'Xóa đã chọn' : 'Đánh dấu đã đọc',
         }),
       );
       if (action === 'delete') await confirmLast(alert);

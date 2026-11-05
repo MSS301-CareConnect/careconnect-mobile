@@ -51,7 +51,8 @@ test('successful password change clears credentials and protected UI immediately
   const screen = await render(<App client={api} />);
   try {
     await fireEvent.press(await screen.findByRole('tab', { name: /Hồ sơ/ }));
-    await fireEvent.press(await screen.findByRole('button', { name: 'Thông tin tài khoản' }));
+    await fireEvent.press(await screen.findByRole('button', { name: 'Bảo mật' }));
+    await fireEvent.press(await screen.findByRole('button', { name: 'Đổi mật khẩu' }));
     await fireEvent.changeText(await screen.findByLabelText('Mật khẩu hiện tại'), 'Current1!');
     await fireEvent.changeText(screen.getByLabelText('Mật khẩu mới'), 'Changed1!');
     await fireEvent.changeText(screen.getByLabelText('Xác nhận mật khẩu mới'), 'Changed1!');

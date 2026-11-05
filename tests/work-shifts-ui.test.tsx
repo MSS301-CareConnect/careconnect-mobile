@@ -10,6 +10,7 @@ function fixture(
   options: {
     status?: string;
     eligible?: boolean;
+    centerActive?: boolean;
     uncertain?: boolean;
     cancelConflict?: boolean;
     malformed?: boolean;
@@ -48,17 +49,27 @@ function fixture(
         result = { id: 'user', fullName: 'Test caregiver', roles: ['CAREGIVER'], status: 'ACTIVE' };
       else if (path === '/caregivers/me')
         result = {
+          id: 'caregiver',
           centerName: 'Test center',
+          centerStatus: options.centerActive === false ? 'INACTIVE' : 'ACTIVE',
           caregiverStatus: options.eligible === false ? 'INACTIVE' : 'ACTIVE',
           verificationStatus: 'VERIFIED',
         };
       else if (path === '/notifications/unread-count') result = { count: 0 };
       else if (path === '/notifications' || path === '/booking-occurrences') result = page([]);
-      else if (path === '/work-shifts/registrations/me')
-        result = page(registration ? [registration] : []);
-      else if (path === '/work-shifts/shift/registrations') {
+      else if (path === '/caregivers/me/schedules') result = page([]);
+      else if (path === '/caregivers/caregiver/time-offs') result = [];
+      else if (path === '/work-shifts/registrations/me') {
+        const status = url.searchParams.get('status');
+        result = page(
+          registration && (!status || registration.registrationStatus === status)
+            ? [registration]
+            : [],
+        );
+      } else if (path === '/work-shifts/shift/registrations') {
         posts++;
         const body = JSON.parse(String(init?.body)) as { caregiverNote?: string };
+        expect(Object.keys(body)).toEqual(['caregiverNote']);
         registration = {
           id: 'registration',
           workShiftId: 'shift',
@@ -96,16 +107,35 @@ function fixture(
           version: 1,
           note: 'Test shift note',
         };
-        result = path === '/work-shifts' ? page([shift]) : shift;
+        if (path === '/work-shifts') {
+          const from = url.searchParams.get('fromDate');
+          const to = url.searchParams.get('toDate');
+          const shifts = [
+            {
+              ...shift,
+              id: 'past',
+              shiftType: 'PAST SHIFT',
+              workDate: vietnamDay(new Date(Date.now() - 86400000)),
+            },
+            shift,
+          ].filter((item) => (!from || item.workDate >= from) && (!to || item.workDate <= to));
+          const size = Number(url.searchParams.get('size') ?? 20);
+          result = { ...page(shifts.slice(0, size)), totalElements: shifts.length };
+        } else result = shift;
       } else return new Response(JSON.stringify({ code: 404 }), { status: 404 });
       return new Response(JSON.stringify({ code: 200, result }), { status: 200 });
     },
   );
   return { api, requests, counts: () => ({ posts, deletes }) };
 }
-async function openShift(api: ApiClient) {
+async function openBoard(api: ApiClient) {
   const screen = await render(<App client={api} />);
-  await fireEvent.press(await screen.findByRole('tab', { name: /Ca làm việc/ }));
+  await fireEvent.press(await screen.findByRole('tab', { name: /Lịch làm việc/ }));
+  await fireEvent.press(screen.getByRole('tab', { name: 'Đăng ký ca' }));
+  return screen;
+}
+async function openShift(api: ApiClient) {
+  const screen = await openBoard(api);
   await screen.findAllByText('TEST SHIFT');
   await fireEvent.press(
     screen.queryByRole('button', { name: 'Đăng ký ca' }) ??
@@ -120,9 +150,8 @@ test.each(['Xem chi tiết ca', 'Đăng ký ca'])(
   'an open shift exposes a separate detail link and register action; %s opens without a write',
   async (action) => {
     const f = fixture();
-    const screen = await render(<App client={f.api} />);
+    const screen = await openBoard(f.api);
     try {
-      await fireEvent.press(await screen.findByRole('tab', { name: /Ca làm việc/ }));
       await screen.findByText('TEST SHIFT');
       expect(screen.getByRole('button', { name: 'Xem chi tiết ca' })).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Đăng ký ca' })).toBeTruthy();
@@ -137,9 +166,8 @@ test.each(['Xem chi tiết ca', 'Đăng ký ca'])(
 
 test('an already registered open shift opens from its card without a nested detail button', async () => {
   const f = fixture({ status: 'PENDING' });
-  const screen = await render(<App client={f.api} />);
+  const screen = await openBoard(f.api);
   try {
-    await fireEvent.press(await screen.findByRole('tab', { name: /Ca làm việc/ }));
     const card = await screen.findByRole('button', {
       name: /^Xem chi tiết ca, .*13:00–17:04, Đã đăng ký$/,
     });
@@ -201,9 +229,9 @@ test.each(['network', 'response'])(
 
 test('approved registration is read-only and reachable from my registrations', async () => {
   const f = fixture({ status: 'APPROVED' });
-  const screen = await render(<App client={f.api} />);
+  const screen = await openBoard(f.api);
   try {
-    await fireEvent.press(await screen.findByRole('tab', { name: /Ca làm việc/ }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Đã duyệt' }));
     await screen.findByText('Đã duyệt đăng ký');
     expect(screen.queryByRole('button', { name: 'Xem chi tiết' })).toBeNull();
     await fireEvent.press(
@@ -222,17 +250,21 @@ test('approved registration is read-only and reachable from my registrations', a
   }
 });
 
-test('inactive caregiver gets an eligibility message and cannot register', async () => {
-  const f = fixture({ eligible: false });
-  const screen = await openShift(f.api);
-  try {
-    await screen.findByText('Hồ sơ cần được xác minh và đang hoạt động để đăng ký ca.');
-    await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký' }));
-    expect(f.counts().posts).toBe(0);
-  } finally {
-    await screen.unmount();
-  }
-});
+test.each([{ eligible: false }, { centerActive: false }])(
+  'inactive caregiver or center blocks registration: %s',
+  async (options) => {
+    const f = fixture(options);
+    const screen = await openShift(f.api);
+    try {
+      await screen.findByText('Hồ sơ cần được xác minh và đang hoạt động để đăng ký ca.');
+      expect(screen.getByRole('button', { name: 'Gửi đăng ký' })).toBeDisabled();
+      await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký' }));
+      expect(f.counts().posts).toBe(0);
+    } finally {
+      await screen.unmount();
+    }
+  },
+);
 
 test('a concurrent approval prevents cancellation and refresh reconciles the approved state', async () => {
   const f = fixture({ status: 'PENDING', cancelConflict: true });
@@ -254,9 +286,9 @@ test('a concurrent approval prevents cancellation and refresh reconciles the app
 
 test('my pending registration can still be cancelled when its shift is unavailable', async () => {
   const f = fixture({ status: 'PENDING', shiftUnavailable: true });
-  const screen = await render(<App client={f.api} />);
+  const screen = await openBoard(f.api);
   try {
-    await fireEvent.press(await screen.findByRole('tab', { name: /Ca làm việc/ }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Chờ duyệt' }));
     await screen.findByText('Đang chờ trung tâm duyệt');
     await fireEvent.press(
       screen.getByRole('button', {
@@ -274,21 +306,31 @@ test('my pending registration can still be cancelled when its shift is unavailab
   }
 });
 
-test('primary work-shift and availability tabs are separate from visit filters, and new shifts are visible', async () => {
+test('four primary tabs keep registration and day agenda inside work schedule, separate from visit filters', async () => {
   const f = fixture();
   const screen = await render(<App client={f.api} />);
   try {
     await fireEvent.press(await screen.findByRole('tab', { name: /Buổi được giao/ }));
     expect(screen.queryByRole('button', { name: 'Đăng ký ca làm việc' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Lịch được trung tâm phân công' })).toBeNull();
-    await fireEvent.press(screen.getByRole('tab', { name: /Ca làm việc/ }));
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    await fireEvent.press(screen.getByRole('tab', { name: /Lịch làm việc/ }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Đăng ký ca' }));
     await screen.findByText('TEST SHIFT');
     expect(screen.queryByText('PAST SHIFT')).toBeNull();
+    expect(f.requests.filter((request) => request.path === '/work-shifts')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: expect.stringContaining(`fromDate=${vietnamDay()}`),
+        }),
+      ]),
+    );
     expect(screen.getByText('13:00–17:04')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Đăng ký ca' })).toBeTruthy();
-    expect(screen.getByText('Đăng ký của tôi')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('tab', { name: /Lịch rảnh/ }));
-    await screen.findByText(/Các khung giờ đã được trung tâm duyệt/);
+    for (const name of ['Ca mở', 'Chờ duyệt', 'Đã duyệt', 'Lịch sử'])
+      expect(screen.getByRole('tab', { name })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Lịch theo ngày' }));
+    await screen.findByText('Không có hoạt động trong ngày này.');
   } finally {
     await screen.unmount();
   }

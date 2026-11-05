@@ -1,12 +1,14 @@
 import React from 'react';
 import { expect, test } from '@jest/globals';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import App from '../App';
 import { ApiClient } from '../src/core/api';
+import { vietnamDay } from '../src/core/time';
 
-function fixture({ empty = false, failFirst = false, failRequests = false } = {}) {
+function fixture({ empty = false, failFirst = false } = {}) {
   let token: string | null = 'refresh';
   let failed = false;
+  const requests: { path: string; query: URLSearchParams }[] = [];
   const api = new ApiClient(
     'http://test',
     {
@@ -18,6 +20,7 @@ function fixture({ empty = false, failFirst = false, failRequests = false } = {}
     async (input) => {
       const url = new URL(String(input));
       const path = url.pathname.replace('/api/v1', '');
+      requests.push({ path, query: url.searchParams });
       let result: unknown;
       if (path === '/auth/refresh') result = { accessToken: 'access', refreshToken: 'refresh' };
       else if (path === '/users/me')
@@ -31,8 +34,7 @@ function fixture({ empty = false, failFirst = false, failRequests = false } = {}
       else if (path === '/notifications')
         result = { items: [], page: 0, totalPages: 0, totalElements: 0 };
       else if (path === '/bookings/caregiver-requests') {
-        if (failRequests) return new Response(JSON.stringify({ code: 503 }), { status: 503 });
-        result = { items: [], page: 0, totalPages: 1, totalElements: 7 };
+        result = { items: [], page: 0, totalPages: 0, totalElements: 0 };
       } else if (path === '/booking-occurrences') {
         if (failFirst && !failed) {
           failed = true;
@@ -63,25 +65,39 @@ function fixture({ empty = false, failFirst = false, failRequests = false } = {}
       return new Response(JSON.stringify({ code: 200, result }));
     },
   );
-  return api;
+  return { api, requests };
 }
 
 test('today section opens the assigned visits screen through View all', async () => {
-  const screen = await render(<App client={fixture()} />);
+  const f = fixture();
+  const screen = await render(<App client={f.api} />);
   try {
     await screen.findByText('Lịch chăm sóc hôm nay');
     await fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả' }));
     expect(await screen.findByRole('button', { name: 'Bộ lọc buổi chăm sóc' })).toBeTruthy();
     expect(await screen.findByText('Test first recipient')).toBeTruthy();
+    await waitFor(() => {
+      const query = f.requests
+        .filter((request) => request.path === '/booking-occurrences')
+        .at(-1)?.query;
+      expect(query?.get('from')).toBe(vietnamDay());
+      expect(query?.get('to')).toBe(vietnamDay());
+      expect(query?.has('status')).toBe(false);
+    });
   } finally {
     await screen.unmount();
   }
 });
 
-test('Home exposes customer requests with actual server count and opens the request inbox', async () => {
-  const screen = await render(<App client={fixture()} />);
+test('requests remain reachable from assigned visits without loading a request count on Home', async () => {
+  const f = fixture();
+  const screen = await render(<App client={f.api} />);
   try {
-    await screen.findByLabelText('Yêu cầu đang chờ: 7');
+    await screen.findByText('Test first recipient');
+    expect(f.requests.some((request) => request.path === '/bookings/caregiver-requests')).toBe(
+      false,
+    );
+    await fireEvent.press(screen.getByRole('tab', { name: /Buổi được giao/ }));
     await fireEvent.press(screen.getByRole('button', { name: 'Yêu cầu từ khách' }));
     expect(await screen.findByText('Yêu cầu đặt lịch')).toBeTruthy();
     expect(screen.getByText('Không có yêu cầu đang chờ trả lời.')).toBeTruthy();
@@ -90,19 +106,50 @@ test('Home exposes customer requests with actual server count and opens the requ
   }
 });
 
-test('a failed request count is shown as unavailable instead of a fabricated zero', async () => {
-  const screen = await render(<App client={fixture({ failRequests: true })} />);
+test('View all resets previously selected history to the Vietnam day range', async () => {
+  const f = fixture();
+  const screen = await render(<App client={f.api} />);
   try {
-    await screen.findByText('Chưa tải được số yêu cầu. Bạn vẫn có thể mở danh sách để kiểm tra.');
-    expect(screen.queryByLabelText('Yêu cầu đang chờ: 0')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Yêu cầu từ khách' })).toBeTruthy();
+    await fireEvent.press(await screen.findByRole('tab', { name: /Buổi được giao/ }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Lịch sử' }));
+    await waitFor(() => {
+      const query = f.requests
+        .filter((request) => request.path === '/booking-occurrences')
+        .at(-1)?.query;
+      expect(query?.get('status')).toBe('COMPLETED');
+    });
+    await fireEvent.press(screen.getByRole('tab', { name: /Hôm nay/ }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả' }));
+    await waitFor(() => {
+      const query = f.requests
+        .filter((request) => request.path === '/booking-occurrences')
+        .at(-1)?.query;
+      expect(query?.get('from')).toBe(vietnamDay());
+      expect(query?.get('to')).toBe(vietnamDay());
+      expect(query?.has('status')).toBe(false);
+    });
+    expect(await screen.findByText('Test first recipient')).toBeTruthy();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('failed Home reads withhold totals and empty-day actions until a successful read', async () => {
+  const screen = await render(<App client={fixture({ failFirst: true }).api} />);
+  try {
+    await screen.findByText(/Không thể tải dữ liệu/);
+    expect(screen.queryByLabelText('Hôm nay: 0')).toBeNull();
+    expect(screen.queryByLabelText('Đã hoàn thành: 0')).toBeNull();
+    expect(screen.queryByText('Hôm nay bạn chưa có buổi nào')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Đăng ký ca' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Xem buổi sắp tới' })).toBeNull();
   } finally {
     await screen.unmount();
   }
 });
 
 test('home keeps server totals while paginating a partial page of visits', async () => {
-  const screen = await render(<App client={fixture()} />);
+  const screen = await render(<App client={fixture().api} />);
   try {
     await screen.findByText('Test first recipient');
     expect(screen.getByText('23')).toBeTruthy();
@@ -118,25 +165,45 @@ test('home keeps server totals while paginating a partial page of visits', async
   }
 });
 
-test('empty home retains assignment guidance and access to all visits', async () => {
-  const screen = await render(<App client={fixture({ empty: true })} />);
+test('an empty day opens upcoming visits with the Vietnam start date and no end date', async () => {
+  const f = fixture({ empty: true });
+  const screen = await render(<App client={f.api} />);
   try {
-    await screen.findByText('Chưa có ca chăm sóc trong mục này');
-    expect(screen.getByText('Lịch mới sẽ xuất hiện khi trung tâm phân công cho bạn.')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả' }));
+    await screen.findByText('Hôm nay bạn chưa có buổi nào');
+    await fireEvent.press(screen.getByRole('button', { name: 'Xem buổi sắp tới' }));
     expect(await screen.findByRole('button', { name: 'Bộ lọc buổi chăm sóc' })).toBeTruthy();
+    await waitFor(() => {
+      const query = f.requests
+        .filter((request) => request.path === '/booking-occurrences')
+        .at(-1)?.query;
+      expect(query?.get('from')).toBe(vietnamDay());
+      expect(query?.has('to')).toBe(false);
+      expect(query?.has('status')).toBe(false);
+    });
   } finally {
     await screen.unmount();
   }
 });
 
 test('failed home read can be retried without losing access to the schedule', async () => {
-  const screen = await render(<App client={fixture({ failFirst: true })} />);
+  const screen = await render(<App client={fixture({ failFirst: true }).api} />);
   try {
     await screen.findByText(/Không thể tải dữ liệu/);
     expect(screen.getByRole('button', { name: 'Xem tất cả' })).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại trạng thái' }));
     expect(await screen.findByText('Test first recipient')).toBeTruthy();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('an empty day opens registration within the integrated work schedule', async () => {
+  const screen = await render(<App client={fixture({ empty: true }).api} />);
+  try {
+    await screen.findByText('Hôm nay bạn chưa có buổi nào');
+    await fireEvent.press(screen.getByRole('button', { name: 'Đăng ký ca' }));
+    expect(await screen.findByRole('tab', { name: 'Đăng ký ca', selected: true })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Lịch làm việc/, selected: true })).toBeTruthy();
   } finally {
     await screen.unmount();
   }
