@@ -105,8 +105,8 @@ export function ToolbarTabIcon({
           <View
             style={{
               position: 'absolute',
-                width: 0,
-                height: 0,
+              width: 0,
+              height: 0,
               top: size * 0.06,
               left: size * 0.1,
               borderLeftWidth: size * 0.4,
