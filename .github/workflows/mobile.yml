@@ -17,7 +17,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: '14742923'
+          packages: 'platform-tools'
       - run: npm ci
       - run: npm run check
       - run: npx react-native config
