@@ -20,7 +20,7 @@ Có thể mở thư mục `android/` bằng Android Studio để sync/build/ch�
 
 Metro dùng cổng **8090** vì Identity BE đã dùng 8081. Sau lần cài đầu, chạy `npm start` và mở biểu tượng CareConnect trên emulator; sửa JavaScript/TypeScript dùng Fast Refresh, không cần cài lại hay bấm Connect. Chỉ build/cài lại khi đổi native code hoặc native dependency. Lần đầu chuyển từ Expo sang CLI cần đăng nhập lại vì refresh token trong Expo SecureStore không được di chuyển.
 
-`API_URL` trong `.env` là origin gateway, không thêm `/api/v1`; app tự thêm đường dẫn này. Đây là cấu hình public, không đặt secrets. Android Studio Emulator dùng `http://10.0.2.2:8080`; LDPlayer/USB dùng `http://127.0.0.1:8080` sau `adb reverse` cho 8080 và 8090. Gateway/BE chạy riêng. Sau khi đổi `.env`, khởi động lại Metro bằng `npm start -- --reset-cache`.
+`API_URL` trong `.env` là origin gateway, không thêm `/api/v1`; app tự thêm đường dẫn này. Đây là cấu hình public, không đặt secrets. Android Studio Emulator dùng `http://10.0.2.2:8080`; LDPlayer/USB dùng `http://127.0.0.1:8080`. Với API loopback, `npm run android` tự nối lại cổng gateway và Metro8090 cho emulator/thiết bị đã mở; nhiều thiết bị thì chọn `npm run android -- --device SERIAL`. Gateway/BE chạy riêng. Sau khi đổi `.env`, khởi động lại Metro bằng `npm start -- --reset-cache`.
 
 ## Chức năng
 

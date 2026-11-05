@@ -41,7 +41,6 @@ export function parseSchedule(value: unknown): ProviderSchedule {
 
 export function canCancelSchedule(schedule: ProviderSchedule, now = Date.now()) {
   return (
-    schedule.status === 'SCHEDULED' &&
-    Date.parse(`${schedule.date}T${schedule.end}+07:00`) > now
+    schedule.status === 'SCHEDULED' && Date.parse(`${schedule.date}T${schedule.end}+07:00`) > now
   );
 }

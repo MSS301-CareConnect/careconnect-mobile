@@ -43,9 +43,9 @@ test('availability end boundary uses Vietnam time and unknown states cannot be c
   const parsed = parseSchedule(slot);
   expect(canCancelSchedule(parsed, Date.parse('2026-11-02T09:59:59Z'))).toBe(true);
   expect(canCancelSchedule(parsed, Date.parse('2026-11-02T10:00:00Z'))).toBe(false);
-  expect(
-    canCancelSchedule(parseSchedule({ ...slot, scheduleStatus: 'NEW_SERVER_STATE' }), 0),
-  ).toBe(false);
+  expect(canCancelSchedule(parseSchedule({ ...slot, scheduleStatus: 'NEW_SERVER_STATE' }), 0)).toBe(
+    false,
+  );
 });
 
 test('schedule cancellation sends the trimmed required reason, target status and current version', async () => {

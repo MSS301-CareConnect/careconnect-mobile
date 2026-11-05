@@ -9,4 +9,5 @@ const compat = new FlatCompat({
 module.exports = [
   { ignores: ['artifacts/**', '.tools/**', 'android/**', 'ios/**', 'coverage/**'] },
   ...fixupConfigRules(compat.extends('@react-native')),
+  { files: ['scripts/**/*.cjs'], languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs' } },
 ];

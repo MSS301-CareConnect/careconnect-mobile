@@ -43,13 +43,13 @@
   },
   "scripts": {
     "start": "react-native start --port 8090",
-    "android": "react-native run-android --port 8090 --active-arch-only",
+    "android": "node scripts/run-android.cjs",
     "doctor": "react-native doctor",
     "build:android": "powershell -ExecutionPolicy Bypass -File scripts/build-android.ps1",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src App.tsx tests",
-    "format": "prettier --check src App.tsx tests *.ts *.json *.js *.cjs",
-    "format:write": "prettier --write src App.tsx tests *.ts *.json *.js *.cjs",
+    "lint": "eslint src App.tsx tests scripts/*.cjs",
+    "format": "prettier --check src App.tsx tests *.ts *.json *.js *.cjs scripts/*.cjs",
+    "format:write": "prettier --write src App.tsx tests *.ts *.json *.js *.cjs scripts/*.cjs",
     "test": "jest --runInBand",
     "check": "npm run format && npm run lint && npm run typecheck && npm test"
   },

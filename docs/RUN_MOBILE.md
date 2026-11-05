@@ -67,7 +67,7 @@ Metro dùng **8090** vì BE Identity dùng 8081. Giữ Terminal Metro mở; tron
 
 CLI build Gradle, cài app rồi mở CareConnect. Nếu có nhiều thiết bị, dùng lệnh sau để chọn đúng thiết bị:
 
-    npm run android -- --list-devices
+    npm run android -- --device DEVICE_SERIAL
 
 `npm run android` đã bật `--active-arch-only` để build đúng kiến trúc thiết bị đang dùng. Có thể mở thư mục `android/` bằng Android Studio, chờ Gradle sync, chọn thiết bị và Run cấu hình app. Metro vẫn cần chạy tại gốc repo.
 
@@ -82,7 +82,7 @@ Với LDPlayer, bật ADB debugging cục bộ rồi chạy:
     .\scripts\connect-ldplayer.ps1
     adb devices
 
-Script mặc định kết nối `127.0.0.1:5555`, reverse gateway 8080 cùng Metro 8090. Đặt `API_URL=http://127.0.0.1:8080`, chạy `npm start`, rồi `npm run android` ở Terminal khác để cài lần đầu. Những lần sau mở app từ biểu tượng. Chạy lại script kết nối sau khi khởi động lại LDPlayer. Có thể truyền `-AdbPath` hoặc `-Address`; xem [LDPLAYER.md](LDPLAYER.md).
+Script mặc định kết nối `127.0.0.1:5555`, reverse gateway 8080 cùng Metro 8090. Đặt `API_URL=http://127.0.0.1:8080`, chạy `npm start`, rồi `npm run android` ở Terminal khác để cài lần đầu. `npm run android` tự nối lại gateway và Metro cho thiết bị đang chọn khi API là địa chỉ loopback; nếu ADB đã thấy một thiết bị, không cần chạy script kết nối trước lệnh này. Khi có nhiều thiết bị, chọn bằng `--device DEVICE_SERIAL`; không dùng `--list-devices`/`--interactive` với API loopback. Những lần chỉ mở APK có sẵn thì chạy lại script kết nối sau khi khởi động lại LDPlayer rồi mở app từ biểu tượng. Có thể truyền `-AdbPath` hoặc `-Address`; xem [LDPLAYER.md](LDPLAYER.md).
 
 Với điện thoại Android thật, bật Developer options/USB debugging, kết nối USB và chấp nhận quyền ADB. Kiểm tra `adb devices`, rồi reverse hai cổng trước khi chạy Metro/cài app:
 

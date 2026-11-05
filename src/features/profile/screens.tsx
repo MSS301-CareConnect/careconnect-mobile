@@ -1,5 +1,15 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { Image, Linking, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@react-native-vector-icons/feather/static';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,6 +18,7 @@ import { useApp } from '../../core/app-context';
 import { useDirty, useRemote, useWrite } from '../../core/hooks';
 import { Routes } from '../../app/routes';
 import { formatInstant } from '../../core/time';
+import { useVietnamDay } from '../../core/use-vietnam-day';
 import {
   Badge,
   Button,
@@ -28,7 +39,7 @@ import {
   confirm,
 } from '../../core/ui';
 import { ProfileRepository } from './repository';
-import { canCancelSchedule } from './schedule';
+import { canCancelSchedule, ProviderSchedule } from './schedule';
 function useRepo() {
   const { api } = useApp();
   return useMemo(() => new ProfileRepository(api), [api]);
@@ -262,158 +273,344 @@ export function AccountScreen() {
     </Screen>
   );
 }
-function CancelScheduleForm({
-  scheduleId,
-  onDone,
-  onKeep,
+function CancelScheduleButton({
+  label,
+  onPress,
+  disabled = false,
+  busy = false,
+  primary = false,
 }: {
-  scheduleId: string;
-  onDone: () => void;
-  onKeep: () => void;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  primary?: boolean;
 }) {
-  const { t } = useApp();
-  const repo = useRepo();
-  const write = useWrite();
-  const remote = useRemote(
-    useCallback(async () => {
-      const page = await repo.schedules(0);
-      return page.items.find((s) => s.id === scheduleId);
-    }, [repo, scheduleId]),
-  );
-  const [reason, setReason] = useState('');
-  const dirty = reason.trim().length > 0;
-  useDirty(dirty, write.busy);
-  const schedule = remote.data;
-  const locked = write.busy || write.uncertain || remote.loading;
-  const errorKey =
-    write.error instanceof ApiError && write.error.status === 409
-      ? 'cancelScheduleBooked'
-      : undefined;
-  async function reconcile() {
-    const fresh = await remote.reload();
-    if (fresh) write.reset();
-  }
+  const foreground = primary ? colors.white : colors.danger;
   return (
-    <Card style={{ gap: 10, padding: 16, borderWidth: 1, borderColor: colors.line }}>
-      <Txt style={{ fontWeight: '700' }}>{t('cancelScheduleQuestion')}</Txt>
-      <Txt muted>{t('cancelScheduleHint')}</Txt>
-      <Field
-        label={t('cancelScheduleReason')}
-        value={reason}
-        onChangeText={setReason}
-        multiline
-        maxLength={500}
-        editable={!locked}
-      />
-      <Txt muted>{t('cancelScheduleReasonLimit')}</Txt>
-      {errorKey && <Txt muted>{t(errorKey)}</Txt>}
-      <ErrorBox error={write.uncertain ? undefined : write.error} retry={reconcile} />
-      {write.uncertain && (
-        <Button
-          label={t('refresh')}
-          kind="secondary"
-          disabled={remote.loading}
-          onPress={() => void reconcile()}
-        />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: disabled || busy, busy }}
+      disabled={disabled || busy}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 44,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: colors.danger,
+        borderRadius: 12,
+        backgroundColor: primary ? colors.danger : colors.white,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        opacity: disabled || busy ? 0.45 : pressed ? 0.7 : 1,
+      })}
+    >
+      {busy ? (
+        <ActivityIndicator color={foreground} />
+      ) : (
+        <Feather name="x-circle" size={17} color={foreground} />
       )}
-      {!write.uncertain && (
-        <>
-          <Button
-            label={t('cancelScheduleConfirm')}
-            kind="danger"
-            disabled={locked || !reason.trim() || reason.length > 500 || !schedule}
-            loading={write.busy}
-            onPress={() => {
-              if (!schedule) return;
-              void write.run(
-                () => repo.cancelSchedule(schedule, reason),
-                async () => {
-                  onDone();
-                },
-              );
-            }}
-          />
-          <Button
-            label={t('cancelScheduleKeep')}
-            kind="secondary"
-            disabled={write.busy}
-            onPress={onKeep}
-          />
-        </>
-      )}
-    </Card>
+      <Txt style={{ color: foreground, fontWeight: '700', flexShrink: 1 }}>{label}</Txt>
+    </Pressable>
   );
+}
+function ScheduleWriteError({ error }: { error: unknown }) {
+  const { t } = useApp();
+  const key =
+    error instanceof ApiError
+      ? error.code === 4415
+        ? 'cancelScheduleBooked'
+        : error.code === 4404
+          ? 'conflict'
+          : error.code === 4402
+            ? 'cancelScheduleStateChanged'
+            : error.code === 4403
+              ? 'cancelScheduleReasonRequired'
+              : undefined
+      : undefined;
+  return key ? <Txt style={{ color: colors.danger }}>{t(key)}</Txt> : <ErrorBox error={error} />;
 }
 export function ProviderScheduleScreen() {
   const { t, locale } = useApp();
   const repo = useRepo();
   const [p, setPage] = useState(0);
-  const remote = useRemote(useCallback(() => repo.schedules(p), [repo, p]));
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [notice, setNotice] = useState('');
-  const now = Date.now();
+  const day = useVietnamDay();
+  const load = useCallback(() => repo.schedules(p), [repo, p]);
+  const remote = useRemote(load);
+  const reload = remote.reload;
+  const write = useWrite();
+  const [selected, setSelected] = useState<ProviderSchedule>();
+  const [reason, setReason] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [confirmed, setConfirmed] = useState<Record<string, ProviderSchedule>>({});
+  const lastAttempt = useRef<string>(undefined);
+  const closing = useRef(false);
+  const previousDay = useRef(day);
+  const [now, setNow] = useState(Date.now);
+  useDirty(!!selected && reason.length > 0, write.busy);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (previousDay.current !== day) {
+      previousDay.current = day;
+      void reload();
+    }
+  }, [day, reload]);
+  useEffect(() => {
+    // Keep the parsed mutation result visible until a matching or newer GET arrives.
+    setConfirmed((current) => {
+      const next = { ...current };
+      let changed = false;
+      remote.data?.items.forEach((item) => {
+        const previous = next[item.id];
+        if (
+          previous &&
+          (item.version > previous.version ||
+            (item.version === previous.version && item.status === previous.status))
+        ) {
+          delete next[item.id];
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [remote.data]);
+  function latest(item: ProviderSchedule) {
+    const result = confirmed[item.id];
+    return result && result.version >= item.version ? result : item;
+  }
+  const current = remote.data?.items.find((item) => item.id === selected?.id);
+  const schedule = current ? latest(current) : undefined;
+  const locked = write.busy || write.uncertain || remote.loading || !!remote.error;
+  const valid =
+    !!schedule && canCancelSchedule(schedule, now) && !!reason.trim() && reason.length <= 500;
+  async function reconcile() {
+    if (write.busy) return;
+    const fresh = await remote.reload();
+    if (
+      fresh &&
+      (!lastAttempt.current || fresh.items.some((item) => item.id === lastAttempt.current))
+    )
+      write.reset();
+  }
+  async function close() {
+    if (write.busy || closing.current) return;
+    closing.current = true;
+    try {
+      if (
+        reason.length > 0 &&
+        !(await confirm(t('discardTitle'), t('discardHint'), t('discard'), t('cancel')))
+      )
+        return;
+      setSelected(undefined);
+      setReason('');
+    } finally {
+      closing.current = false;
+    }
+  }
+  function cancelSelected() {
+    if (locked || !valid || !schedule) return;
+    if (!canCancelSchedule(schedule)) {
+      setNow(Date.now());
+      return;
+    }
+    lastAttempt.current = schedule.id;
+    void write.run(
+      () => repo.cancelSchedule(schedule, reason),
+      async (result) => {
+        setConfirmed((items) => ({ ...items, [result.id]: result }));
+        setSelected(undefined);
+        setReason('');
+        setSaved(true);
+        await remote.reload();
+      },
+    );
+  }
+  function dateLabel(item: ProviderSchedule) {
+    return formatInstant(`${item.date}T00:00:00+07:00`, locale, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Ho_Chi_Minh',
+    });
+  }
   return (
-    <Screen>
-      <Row>
-        <View style={{ flex: 1 }}>
-          <Title>{t('providerSchedule')}</Title>
-        </View>
-        <IconButton
-          label={t('refresh')}
-          icon="refresh-cw"
-          disabled={remote.loading}
-          onPress={() => void remote.reload()}
-        />
-      </Row>
-      <Txt muted>{t('providerHint')}</Txt>
-      {notice !== '' && <Txt>{t(notice)}</Txt>}
-      <RemoteState {...remote} empty={remote.data?.items.length === 0} retry={remote.reload}>
-        {remote.data?.items.map((item) => {
-          const canCancel = canCancelSchedule(item, now);
-          const isCancelling = cancellingId === item.id;
-          return (
-            <Card key={item.id} style={{ gap: 9, padding: 16 }}>
-              <Txt style={{ fontWeight: '700', color: colors.primary }}>
-                {formatInstant(`${item.date}T00:00:00+07:00`, locale, {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                  timeZone: 'Asia/Ho_Chi_Minh',
-                })}
-              </Txt>
-              <Txt style={{ fontSize: 24, lineHeight: 31, fontWeight: '800' }}>
-                {item.start.slice(0, 5)}–{item.end.slice(0, 5)}
-              </Txt>
-              <Badge status={item.status} />
-              {item.note ? <Txt muted>{item.note}</Txt> : null}
-              {canCancel && !isCancelling && (
-                <Button
-                  label={t('cancelSchedule')}
-                  kind="danger"
-                  onPress={() => {
-                    setNotice('');
-                    setCancellingId(item.id);
-                  }}
-                />
-              )}
-              {isCancelling && (
-                <CancelScheduleForm
-                  scheduleId={item.id}
-                  onDone={() => {
-                    setCancellingId(null);
-                    setNotice('cancelScheduleSuccess');
-                    void remote.reload();
-                  }}
-                  onKeep={() => setCancellingId(null)}
-                />
-              )}
-            </Card>
-          );
-        })}
-      </RemoteState>
-      {remote.data && remote.data.totalPages > 1 && (
-        <Pagination {...remote.data} onChange={setPage} />
-      )}
-    </Screen>
+    <>
+      <View
+        style={{ flex: 1 }}
+        pointerEvents={selected ? 'none' : 'auto'}
+        importantForAccessibility={selected ? 'no-hide-descendants' : 'auto'}
+      >
+        <Screen>
+          <Row>
+            <View style={{ flex: 1 }}>
+              <Title>{t('providerSchedule')}</Title>
+            </View>
+            <IconButton
+              label={t('refresh')}
+              icon="refresh-cw"
+              disabled={remote.loading || write.busy}
+              onPress={() => void reconcile()}
+            />
+          </Row>
+          <Txt muted>{t('providerHint')}</Txt>
+          {saved && <Txt>{t('cancelScheduleSuccess')}</Txt>}
+          {!selected && <ScheduleWriteError error={write.error} />}
+          {remote.data && <ErrorBox error={remote.error} />}
+          {remote.loading && remote.data && <Txt muted>{t('loading')}</Txt>}
+          <RemoteState
+            loading={remote.loading && !remote.data}
+            error={remote.data ? undefined : remote.error}
+            empty={remote.data?.items.length === 0}
+            retry={reconcile}
+          >
+            {remote.data?.items.map((loaded) => {
+              const item = latest(loaded);
+              return (
+                <Card key={item.id} style={{ gap: 9, padding: 16 }}>
+                  <Txt style={{ fontWeight: '700', color: colors.primary }}>{dateLabel(item)}</Txt>
+                  <Row>
+                    <Feather name="clock" size={20} color={colors.primary} />
+                    <Txt style={{ fontSize: 24, lineHeight: 31, fontWeight: '800' }}>
+                      {item.start.slice(0, 5)}–{item.end.slice(0, 5)}
+                    </Txt>
+                  </Row>
+                  <Row>
+                    <View style={{ flex: 1 }}>
+                      <Badge
+                        status={item.status === 'SCHEDULED' ? 'provider_SCHEDULED' : item.status}
+                      />
+                    </View>
+                    {canCancelSchedule(item, now) && (
+                      <CancelScheduleButton
+                        label={t('cancelSchedule')}
+                        disabled={write.busy || remote.loading || !!remote.error}
+                        onPress={() => {
+                          if (!canCancelSchedule(item)) {
+                            setNow(Date.now());
+                            return;
+                          }
+                          setSaved(false);
+                          setReason('');
+                          setSelected(item);
+                        }}
+                      />
+                    )}
+                  </Row>
+                  {!!item.note && <Txt muted>{item.note}</Txt>}
+                  {item.status === 'CANCELLED' && !!item.cancellationReason && (
+                    <Info label={t('cancelScheduleReason')} value={item.cancellationReason} />
+                  )}
+                </Card>
+              );
+            })}
+          </RemoteState>
+          {remote.data && remote.data.totalPages > 1 && (
+            <Pagination
+              {...remote.data}
+              onChange={(page) => {
+                if (!selected && !write.busy) setPage(page);
+              }}
+            />
+          )}
+        </Screen>
+      </View>
+      <Modal
+        visible={!!selected}
+        transparent
+        animationType="fade"
+        onRequestClose={() => void close()}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#00000066' }} edges={['top', 'bottom']}>
+          <KeyboardAvoidingView style={{ flex: 1 }}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}
+            >
+              <View accessibilityViewIsModal>
+                <Card style={{ width: '100%', maxWidth: 480, alignSelf: 'center', gap: 16 }}>
+                  <Row>
+                    <View style={{ flex: 1 }}>
+                      <Txt style={{ fontSize: 20, lineHeight: 28, fontWeight: '800' }}>
+                        {t('cancelSchedule')}
+                      </Txt>
+                    </View>
+                    <IconButton
+                      label={t('close')}
+                      icon="x"
+                      disabled={write.busy}
+                      onPress={() => void close()}
+                    />
+                  </Row>
+                  {selected && (
+                    <Txt style={{ fontWeight: '700' }}>
+                      {dateLabel(schedule ?? selected)} · {(schedule ?? selected).start.slice(0, 5)}
+                      –{(schedule ?? selected).end.slice(0, 5)}
+                    </Txt>
+                  )}
+                  <Txt muted>{t('cancelScheduleHint')}</Txt>
+                  {!remote.loading && !schedule && (
+                    <Txt style={{ color: colors.danger }}>{t('cancelScheduleMissing')}</Txt>
+                  )}
+                  {schedule?.status === 'CANCELLED' && (
+                    <>
+                      <Badge status="CANCELLED" />
+                      <Txt>{t('cancelScheduleAlreadyCancelled')}</Txt>
+                      <Info label={t('cancelScheduleReason')} value={schedule.cancellationReason} />
+                    </>
+                  )}
+                  {schedule &&
+                    schedule.status !== 'CANCELLED' &&
+                    !canCancelSchedule(schedule, now) && (
+                      <Txt>{t('cancelScheduleStateChanged')}</Txt>
+                    )}
+                  <Field
+                    label={t('cancelScheduleReason')}
+                    value={reason}
+                    onChangeText={setReason}
+                    multiline
+                    maxLength={500}
+                    editable={!write.busy && schedule?.status !== 'CANCELLED'}
+                  />
+                  <Txt muted>{t('cancelScheduleReasonLimit')}</Txt>
+                  <ScheduleWriteError error={write.error} />
+                  <ErrorBox error={remote.error} />
+                  {(!!write.error || !!remote.error || !schedule) && (
+                    <Button
+                      label={t('refresh')}
+                      kind="secondary"
+                      loading={remote.loading}
+                      disabled={write.busy}
+                      onPress={() => void reconcile()}
+                    />
+                  )}
+                  {schedule?.status !== 'CANCELLED' && (
+                    <CancelScheduleButton
+                      label={t('cancelScheduleConfirm')}
+                      primary
+                      busy={write.busy}
+                      disabled={locked || !valid}
+                      onPress={cancelSelected}
+                    />
+                  )}
+                  <Button
+                    label={t('cancelScheduleKeep')}
+                    kind="secondary"
+                    disabled={write.busy}
+                    onPress={() => void close()}
+                  />
+                </Card>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+    </>
   );
 }
