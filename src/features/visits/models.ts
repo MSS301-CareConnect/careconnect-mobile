@@ -1,11 +1,13 @@
 import { array, object, required, text } from '../../core/json';
+// Trạng thái buổi caregiver thấy (BookingService spec booking v1.0 §11.2); RESERVED / PENDING_ASSIGNMENT / EXPIRED chỉ có
+// trước khi khách thanh toán nên không có trong bộ lọc.
 export const statuses = [
   'SCHEDULED',
   'ACKNOWLEDGED',
   'IN_PROGRESS',
   'COMPLETED',
   'CANCELLED',
-  'MISSED',
+  'CAREGIVER_MISSED',
   'CUSTOMER_NO_SHOW',
 ];
 export type Detail = { label: string; value: string };
@@ -15,6 +17,8 @@ export type Visit = {
   bookingCode: string;
   startAt: string;
   endAt: string;
+  checkInOpensAt: string;
+  checkInClosesAt: string;
   status: string;
   name: string;
   address: string;
@@ -54,6 +58,8 @@ export function parseVisit(value: unknown): Visit {
     bookingCode: text(j.bookingCode),
     startAt: required(j.startAt),
     endAt: required(j.endAt),
+    checkInOpensAt: text(j.checkInOpensAt),
+    checkInClosesAt: text(j.checkInClosesAt),
     status: required(j.status),
     name: text(j.recipientName),
     address: text(j.serviceAddress),

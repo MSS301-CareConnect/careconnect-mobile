@@ -60,6 +60,25 @@ test('only DONE counts as complete; check-in end boundary is excluded', async ()
       Date.parse('2026-11-01T01:30:00Z'),
     ),
   ).toBe(false);
+  // Q12: the server's window wins over the 30-minute fallback.
+  expect(
+    checkInAllowed(
+      '2026-11-01T01:00:00Z',
+      '2026-11-01T03:00:00Z',
+      Date.parse('2026-11-01T00:10:00Z'),
+      '2026-11-01T00:00:00Z',
+      '2026-11-01T01:10:00Z',
+    ),
+  ).toBe(true);
+  expect(
+    checkInAllowed(
+      '2026-11-01T01:00:00Z',
+      '2026-11-01T03:00:00Z',
+      Date.parse('2026-11-01T01:15:00Z'),
+      '2026-11-01T00:00:00Z',
+      '2026-11-01T01:10:00Z',
+    ),
+  ).toBe(false);
 });
 test('report lookup scans every page and updates preserve optimistic version', async () => {
   const report = {
