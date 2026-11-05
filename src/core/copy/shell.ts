@@ -1,0 +1,68 @@
+export const shellCopy: Record<string, readonly [string, string]> = {
+  homeBannerFirst: ['Chăm sóc tận tâm,', 'Thoughtful care,'],
+  homeBannerSecond: ['kết nối yêu thương.', 'meaningful connections.'],
+  homeEmptyTitle: ['Hôm nay bạn chưa có buổi nào', 'You have no visits today'],
+  homeEmptyHint: [
+    'Đăng ký các ca đang mở để khách đặt được bạn.',
+    'Register for open shifts so customers can book you.',
+  ],
+  homeRegister: ['Đăng ký ca', 'Register for shifts'],
+  homeUpcoming: ['Xem buổi sắp tới', 'View upcoming visits'],
+  languageVie: ['VIE', 'VIE'],
+  languageEng: ['ENG', 'ENG'],
+  languageVietnamese: ['Tiếng Việt', 'Vietnamese'],
+  languageEnglish: ['Tiếng Anh', 'English'],
+  shellFocus: ['Ca cần ưu tiên', 'Your next care visit'],
+  shellFocusRefresh: ['Tải lại ca ưu tiên', 'Refresh next visit'],
+  shellFocusEmpty: ['Bạn chưa có ca cần thực hiện hôm nay.', 'No visits need your action today.'],
+  shellAttention: ['Cần bạn phản hồi', 'Needs your response'],
+  shellRequests: ['Yêu cầu từ khách', 'Customer requests'],
+  shellRequestsHint: [
+    'Xem lịch, dịch vụ và phản hồi trước hạn.',
+    'Review dates and services, then respond before the deadline.',
+  ],
+  shellRequestCount: ['Yêu cầu đang chờ', 'Pending requests'],
+  shellRequestsUnavailable: [
+    'Chưa tải được số yêu cầu. Bạn vẫn có thể mở danh sách để kiểm tra.',
+    'The request count is unavailable. You can still open the inbox to check.',
+  ],
+  shellRequestsDenied: [
+    'Bạn chưa được cấp quyền xem yêu cầu. Tải lại sau khi kiểm tra tài khoản.',
+    'Access to booking requests was denied. Check your account and refresh.',
+  ],
+  shellAccountHint: [
+    'Quản lý thông tin liên hệ và bảo mật đăng nhập.',
+    'Manage your contact details and sign-in security.',
+  ],
+  shellPasswordConfirm: ['Xác nhận mật khẩu mới', 'Confirm new password'],
+  shellPasswordMismatch: ['Mật khẩu xác nhận chưa trùng khớp.', 'The confirmation does not match.'],
+  shellPasswordRules: [
+    'Ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt; tối đa 72 byte UTF-8.',
+    'At least 8 characters with uppercase, lowercase, a number and a symbol; no more than 72 UTF-8 bytes.',
+  ],
+  shellPasswordSignIn: [
+    'Đổi mật khẩu sẽ đăng xuất mọi thiết bị. Bạn cần đăng nhập lại.',
+    'Changing your password signs out every device. You will need to sign in again.',
+  ],
+  shellPhoneHint: ['Số điện thoại gồm 10–11 chữ số.', 'Use 10–11 digits for the phone number.'],
+  shellProfileHint: [
+    'Thông tin chuyên môn được trung tâm quản lý và xác minh.',
+    'Your center manages and verifies professional information.',
+  ],
+  shellProfileActions: ['Công việc & tài khoản', 'Work & account'],
+  shellAvatarChoose: ['Chọn ảnh đại diện', 'Choose profile photo'],
+  shellAvatarUpload: ['Cập nhật ảnh đại diện', 'Update profile photo'],
+  shellAvatarHint: ['JPEG, PNG hoặc WebP, tối đa 5 MB.', 'JPEG, PNG or WebP, up to 5 MB.'],
+  shellAvatarInvalid: [
+    'Ảnh chưa hợp lệ. Chọn JPEG, PNG hoặc WebP không quá 5 MB.',
+    'Choose a JPEG, PNG or WebP image no larger than 5 MB.',
+  ],
+  shellAvatarUnknown: [
+    'Kết quả tải ảnh chưa rõ. Tải lại hồ sơ, kiểm tra ảnh trên máy chủ và bỏ ảnh đang chọn trước khi chọn lại.',
+    'The upload result is unknown. Refresh your profile, check the server photo and remove the pending selection before selecting again.',
+  ],
+  shellAvatarDiscard: ['Bỏ ảnh đang chọn', 'Remove selected photo'],
+  shellSecurity: ['Thiết bị đăng nhập', 'Signed-in devices'],
+  shellSignInRole: ['Dành cho người chăm sóc', 'Caregiver sign-in'],
+  shellUpdated: ['Đã cập nhật thông tin.', 'Your information has been updated.'],
+};

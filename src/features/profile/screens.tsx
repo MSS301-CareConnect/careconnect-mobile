@@ -1,24 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  KeyboardAvoidingView,
-  Linking,
-  Modal,
-  Pressable,
-  ScrollView,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@react-native-vector-icons/feather/static';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ApiError } from '../../core/api';
 import { useApp } from '../../core/app-context';
 import { useDirty, useRemote, useWrite } from '../../core/hooks';
 import { Routes } from '../../app/routes';
 import { formatInstant } from '../../core/time';
 import { useVietnamDay } from '../../core/use-vietnam-day';
+import { isStrongPassword } from '../../core/validation';
+import { pickDocuments, PickedDocument } from '../../core/documents';
+import { newestAvatar, ProfileMedia, validateProfileFile } from './models';
 import {
   Badge,
   Button,
@@ -28,150 +20,395 @@ import {
   Field,
   Info,
   IconButton,
-  Pagination,
+  PageHeader,
   RemoteState,
-  Row,
   Screen,
   Section,
-  Title,
   Txt,
   colors,
   confirm,
 } from '../../core/ui';
 import { ProfileRepository } from './repository';
-import { canCancelSchedule, ProviderSchedule } from './schedule';
+import { ProfileInfoRow, ProfileLink, ProfileSection } from './components';
 function useRepo() {
   const { api } = useApp();
   return useMemo(() => new ProfileRepository(api), [api]);
-}
-function CertificateFiles({ id }: { id: string }) {
-  const { t } = useApp();
-  const repo = useRepo();
-  const remote = useRemote(useCallback(() => repo.media('CERTIFICATE', id), [repo, id]));
-  return (
-    <RemoteState {...remote} empty={remote.data?.length === 0} retry={remote.reload}>
-      {remote.data?.map((file) => (
-        <Button
-          key={file.id}
-          kind="secondary"
-          label={file.name || t('viewFile')}
-          disabled={!file.url.startsWith('https://')}
-          onPress={() => void Linking.openURL(file.url)}
-        />
-      ))}
-    </RemoteState>
-  );
 }
 export function ProfileScreen() {
   const { user, t, locale, setLocale, logout } = useApp();
   const repo = useRepo();
   const nav = useNavigation<NativeStackNavigationProp<Routes>>();
-  const [cert, setCert] = useState('');
+  const [file, setFile] = useState<PickedDocument>();
+  const [fileError, setFileError] = useState(false);
+  const [uploadUnknown, setUploadUnknown] = useState(false);
+  const [mediaOverride, setMediaOverride] = useState<ProfileMedia[]>([]);
+  const [imageErrorUri, setImageErrorUri] = useState('');
+  const [securityExpanded, setSecurityExpanded] = useState(false);
+  const day = useVietnamDay();
+  const avatarWrite = useWrite();
+  useDirty(!!file, avatarWrite.busy);
   const remote = useRemote(
     useCallback(async () => {
       const profile = await repo.profile();
-      const [skills, certificates, media] = await Promise.all([
+      const [skills, media, certificates] = await Promise.all([
         repo.skills(profile.id),
-        repo.certificates(profile.id),
         repo.media('CAREGIVER_PROFILE', profile.id),
+        repo.certificates(profile.id).then(
+          (items) => ({ items, error: undefined }),
+          (error: unknown) => ({ items: undefined, error }),
+        ),
       ]);
-      return { profile, skills, certificates, media };
+      return { profile, skills, media, certificates };
     }, [repo]),
   );
-  const avatar = remote.data?.media.find((m) => m.url.startsWith('https://'));
+  const avatar = newestAvatar([...(remote.data?.media ?? []), ...mediaOverride]);
+  const actualName = remote.data?.profile.fullName || user?.fullName;
+  const nameParts = actualName?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const initials = [
+    nameParts[0]?.[0],
+    nameParts.length > 1 ? nameParts[nameParts.length - 1]?.[0] : '',
+  ]
+    .join('')
+    .toUpperCase();
+  const imageUri = file?.uri ?? avatar?.url;
+  const avatarLocked =
+    !remote.data || remote.loading || avatarWrite.busy || avatarWrite.uncertain || uploadUnknown;
+  const profile = remote.data?.profile;
+  const checks = remote.data?.certificates.items
+    ? [
+        { label: 'profileMissingPhoto', done: !!avatar },
+        { label: 'profileMissingPhone', done: !!user?.phoneNumber },
+        { label: 'profileMissingBirth', done: !!profile?.dateOfBirth },
+        { label: 'profileMissingBio', done: !!profile?.bio.trim() },
+        { label: 'profileMissingServices', done: remote.data.skills.length > 0 },
+        {
+          label: 'profileMissingCertificate',
+          done: remote.data.certificates.items.some(
+            (item) => item.status !== 'REJECTED' && (!item.expiryDate || item.expiryDate >= day),
+          ),
+        },
+      ]
+    : undefined;
+  const complete = checks?.filter((item) => item.done).length ?? 0;
+  const percent = checks ? Math.round((complete / checks.length) * 100) : 0;
+  async function chooseAvatar() {
+    if (avatarWrite.busy || avatarWrite.uncertain || uploadUnknown || !remote.data) return;
+    setFileError(false);
+    try {
+      const selection = await pickDocuments({
+        type: ['image/jpeg', 'image/png', 'image/webp'],
+        multiple: false,
+      });
+      if (selection.canceled) return;
+      const selected = selection.assets[0];
+      if (!selected) return;
+      validateProfileFile(selected, 'avatar');
+      setFile(selected);
+      setImageErrorUri('');
+    } catch {
+      setFileError(true);
+    }
+  }
+  async function reconcileAvatar() {
+    if (avatarWrite.busy) return;
+    if (await remote.reload()) avatarWrite.reset();
+  }
+  function uploadAvatar() {
+    if (!file || !remote.data || avatarWrite.busy || avatarWrite.uncertain || uploadUnknown) return;
+    const caregiverId = remote.data.profile.id;
+    void avatarWrite.run(
+      async () => {
+        try {
+          return await repo.uploadMedia('CAREGIVER_PROFILE', caregiverId, file);
+        } catch (error) {
+          if (error instanceof Error && 'uncertain' in error && error.uncertain)
+            setUploadUnknown(true);
+          throw error;
+        }
+      },
+      async (result) => {
+        setMediaOverride(result);
+        setFile(undefined);
+        await remote.reload();
+      },
+    );
+  }
   return (
     <Screen>
-      <View style={{ alignItems: 'center', gap: 10, paddingVertical: 10 }}>
-        {avatar ? (
-          <Image source={{ uri: avatar.url }} style={{ width: 78, height: 78, borderRadius: 26 }} />
-        ) : (
-          <View
-            style={{
-              width: 78,
-              height: 78,
-              borderRadius: 26,
-              backgroundColor: colors.pale,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+      <PageHeader
+        title={t('profile')}
+        description={t('profilePageHint')}
+        action={
+          <IconButton
+            label={t('refresh')}
+            icon="refresh-cw"
+            disabled={remote.loading || avatarWrite.busy}
+            onPress={() => void reconcileAvatar()}
+          />
+        }
+      />
+      <Card style={profileStyles.card}>
+        <View style={profileStyles.identity}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('shellAvatarChoose')}
+            accessibilityHint={t('shellAvatarHint')}
+            accessibilityState={{ disabled: avatarLocked, busy: avatarWrite.busy }}
+            disabled={avatarLocked}
+            onPress={() => void chooseAvatar()}
+            style={({ pressed }) => [
+              profileStyles.avatarButton,
+              pressed && profileStyles.pressed,
+              avatarLocked && profileStyles.disabled,
+            ]}
           >
-            <Feather name="user" size={34} color={colors.primary} />
+            {imageUri && imageUri !== imageErrorUri ? (
+              <Image
+                source={{ uri: imageUri }}
+                style={profileStyles.avatarImage}
+                onError={() => setImageErrorUri(imageUri)}
+                accessible={false}
+              />
+            ) : (
+              <View style={profileStyles.avatarFallback}>
+                {initials ? (
+                  <Txt style={profileStyles.initials}>{initials}</Txt>
+                ) : (
+                  <Feather name="user" size={34} color={colors.primary} accessible={false} />
+                )}
+              </View>
+            )}
+            <View style={profileStyles.camera}>
+              <Feather name="camera" size={19} color={colors.white} accessible={false} />
+            </View>
+          </Pressable>
+          <View style={profileStyles.identityText}>
+            {!!profile?.verification && (
+              <Badge
+                status={
+                  ['VERIFIED', 'PENDING', 'REJECTED'].includes(profile.verification)
+                    ? `profileVerification_${profile.verification}`
+                    : profile.verification
+                }
+                tone={
+                  profile.verification === 'VERIFIED'
+                    ? 'success'
+                    : profile.verification === 'REJECTED'
+                      ? 'danger'
+                      : 'warning'
+                }
+              />
+            )}
+            <Txt accessibilityRole="header" style={profileStyles.name}>
+              {actualName || t('caregiver')}
+            </Txt>
+            <Txt muted style={profileStyles.body}>
+              {[t('caregiver'), profile?.center].filter(Boolean).join(' · ')}
+            </Txt>
+            {!!profile?.status && profile.status !== 'ACTIVE' && <Badge status={profile.status} />}
+          </View>
+        </View>
+        {checks && (
+          <View style={profileStyles.completeness}>
+            <View style={profileStyles.progressHeading}>
+              <Txt style={profileStyles.progressLabel}>
+                {t('profileCompleteness')} {percent}%
+              </Txt>
+              <Txt muted style={profileStyles.body}>
+                {complete}/{checks.length}
+              </Txt>
+            </View>
+            <View
+              accessible
+              accessibilityRole="progressbar"
+              accessibilityLabel={t('profileCompleteness')}
+              accessibilityValue={{ min: 0, max: 100, now: percent, text: `${percent}%` }}
+              style={profileStyles.progressTrack}
+            >
+              <View style={[profileStyles.progressFill, { width: `${percent}%` }]} />
+            </View>
+            {checks.some((item) => !item.done) && (
+              <Txt muted style={profileStyles.body}>
+                {t('profileMissing')}:{' '}
+                {checks
+                  .filter((item) => !item.done)
+                  .map((item) => t(item.label))
+                  .join(' · ')}
+              </Txt>
+            )}
           </View>
         )}
-        <Title>{user?.fullName || t('caregiver')}</Title>
-        <Txt muted>{user?.email}</Txt>
-        <Badge status="caregiver" />
-      </View>
-      <Button
-        kind="secondary"
-        label={t('account')}
-        icon="user"
-        onPress={() => nav.navigate('Account')}
-      />
-      <RemoteState {...remote} retry={remote.reload}>
+        {!!remote.data?.certificates.error && (
+          <>
+            <Txt muted>{t('profileCompletenessUnavailable')}</Txt>
+            <ErrorBox error={remote.data.certificates.error} retry={remote.reload} />
+          </>
+        )}
+      </Card>
+      {!!(file || fileError || avatarWrite.error) && (
+        <Card>
+          <Txt muted>{t('shellAvatarHint')}</Txt>
+          {file && <Txt>{file.name}</Txt>}
+          {fileError && <Txt style={profileStyles.error}>{t('shellAvatarInvalid')}</Txt>}
+          {uploadUnknown && <Txt style={profileStyles.error}>{t('shellAvatarUnknown')}</Txt>}
+          <ErrorBox error={avatarWrite.error} retry={() => void reconcileAvatar()} />
+          {file && (
+            <Button
+              label={t('shellAvatarUpload')}
+              loading={avatarWrite.busy}
+              disabled={avatarWrite.uncertain || uploadUnknown}
+              onPress={uploadAvatar}
+            />
+          )}
+          {file && (
+            <Button
+              kind="secondary"
+              label={t('shellAvatarDiscard')}
+              disabled={avatarWrite.busy || avatarWrite.uncertain}
+              onPress={() => {
+                setFile(undefined);
+                setUploadUnknown(false);
+              }}
+            />
+          )}
+        </Card>
+      )}
+      {remote.data && <ErrorBox error={remote.error} retry={remote.reload} />}
+      <RemoteState
+        loading={remote.loading && !remote.data}
+        error={remote.data ? undefined : remote.error}
+        retry={remote.reload}
+      >
         {remote.data && (
           <>
-            <Section title={t('professional')} icon="briefcase">
-              <Info label={t('center')} value={remote.data.profile.center} />
-              <Info label={t('experienceYears')} value={remote.data.profile.experience} />
-              <Info label={t('rating')} value={remote.data.profile.rating} />
-              <Info label={t('bio')} value={remote.data.profile.bio} />
-              <Info label={t('verificationStatus')} value={t(remote.data.profile.verification)} />
-              <Info label={t('caregiverStatus')} value={t(remote.data.profile.status)} />
-            </Section>
-            <Section title={t('skills')} icon="award">
+            <ProfileSection title={t('profilePersonal')} icon="user">
+              <View>
+                <ProfileInfoRow
+                  label={t('dateOfBirth')}
+                  value={
+                    remote.data.profile.dateOfBirth
+                      ? formatInstant(`${remote.data.profile.dateOfBirth}T00:00:00+07:00`, locale, {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          timeZone: 'Asia/Ho_Chi_Minh',
+                        })
+                      : t('profileNotSet')
+                  }
+                />
+                <ProfileInfoRow
+                  label={t('gender')}
+                  value={
+                    remote.data.profile.gender
+                      ? ['MALE', 'FEMALE', 'OTHER'].includes(remote.data.profile.gender)
+                        ? t(`profileGender_${remote.data.profile.gender}`)
+                        : remote.data.profile.gender
+                      : t('profileNotSet')
+                  }
+                />
+                <ProfileInfoRow
+                  label={t('profileExperience')}
+                  value={
+                    remote.data.profile.experience === undefined
+                      ? t('profileNotSet')
+                      : remote.data.profile.experience === 1
+                        ? t('profileExperienceOne')
+                        : `${remote.data.profile.experience} ${t('profileExperienceUnit')}`
+                  }
+                />
+                <ProfileInfoRow label={t('email')} value={user?.email || t('profileNotSet')} />
+                <ProfileInfoRow
+                  label={t('phoneNumber')}
+                  value={user?.phoneNumber || t('profileNotSet')}
+                  onEdit={() => nav.navigate('Account')}
+                  last
+                />
+              </View>
+            </ProfileSection>
+            <ProfileSection title={t('bio')} icon="message-circle">
+              <Txt style={profileStyles.body}>{remote.data.profile.bio || t('profileNotSet')}</Txt>
+            </ProfileSection>
+            <ProfileSection title={t('profileServices')} icon="layers">
+              <Txt muted style={profileStyles.body}>
+                {t('profileServicesHint')}
+              </Txt>
               {remote.data.skills.length ? (
-                remote.data.skills.map((skill) => <Txt key={skill.id}>• {skill.name}</Txt>)
-              ) : (
-                <Txt muted>—</Txt>
-              )}
-            </Section>
-            <Section title={t('certificates')} icon="file-text">
-              {remote.data.certificates.length ? (
-                remote.data.certificates.map((item) => (
-                  <Card key={item.id}>
-                    <Txt style={{ fontWeight: '700' }}>{item.name}</Txt>
-                    <Txt muted>
-                      {[item.issuedBy, item.issuedDate, item.expiryDate]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </Txt>
-                    <Badge status={item.status} />
-                    <Button
-                      kind="secondary"
-                      label={t('viewFile')}
-                      onPress={() => setCert(cert === item.id ? '' : item.id)}
+                remote.data.skills.map((skill) => (
+                  <View key={skill.id} style={profileStyles.service}>
+                    <Feather
+                      name="check-circle"
+                      size={22}
+                      color={colors.primary}
+                      accessible={false}
                     />
-                    {cert === item.id && <CertificateFiles id={item.id} />}
-                  </Card>
+                    <Txt style={profileStyles.serviceText}>{skill.name}</Txt>
+                  </View>
                 ))
               ) : (
-                <Txt muted>—</Txt>
+                <Txt muted style={profileStyles.body}>
+                  {t('profileServicesEmpty')}
+                </Txt>
               )}
-            </Section>
+            </ProfileSection>
           </>
         )}
       </RemoteState>
-      <Section title={t('language')} icon="globe">
-        <Chips
-          values={[
-            { value: 'vi', label: 'Tiếng Việt' },
-            { value: 'en', label: 'English' },
-          ]}
-          value={locale}
-          onChange={(v) => setLocale(v === 'en' ? 'en' : 'vi')}
+      <Card style={profileStyles.linkCard}>
+        <ProfileLink
+          label={t('keptDeposits')}
+          icon="credit-card"
+          onPress={() => nav.navigate('KeptDeposits')}
         />
-      </Section>
+      </Card>
+      <Card style={profileStyles.linkCard}>
+        <ProfileLink
+          label={t('certificates')}
+          icon="award"
+          onPress={() => nav.navigate('Certificates')}
+        />
+        <View style={profileStyles.divider} />
+        <ProfileLink
+          label={t('profileSecurity')}
+          icon="shield"
+          expanded={securityExpanded}
+          onPress={() => setSecurityExpanded(!securityExpanded)}
+        />
+        {securityExpanded && (
+          <View style={profileStyles.securityLinks}>
+            <ProfileLink
+              label={t('changePassword')}
+              icon="lock"
+              onPress={() => nav.navigate('Account')}
+            />
+            <ProfileLink
+              label={t('shellSecurity')}
+              icon="smartphone"
+              onPress={() => nav.navigate('SecuritySessions')}
+            />
+          </View>
+        )}
+      </Card>
       <Button
         kind="danger"
         label={t('logout')}
         icon="log-out"
+        disabled={avatarWrite.busy}
         onPress={() =>
           void confirm(t('logoutQuestion'), '', t('logout'), t('cancel')).then((ok) => {
             if (ok) void logout();
           })
         }
       />
+      <ProfileSection title={t('language')} icon="globe">
+        <Chips
+          values={[
+            { value: 'vi', label: t('languageVietnamese') },
+            { value: 'en', label: t('languageEnglish') },
+          ]}
+          value={locale}
+          onChange={(v) => setLocale(v === 'en' ? 'en' : 'vi')}
+        />
+      </ProfileSection>
     </Screen>
   );
 }
@@ -181,14 +418,17 @@ export function AccountScreen() {
   const [phone, setPhone] = useState(user?.phoneNumber ?? '');
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [saved, setSaved] = useState(false);
   const write = useWrite();
   const dirty =
-    name !== (user?.fullName ?? '') || phone !== (user?.phoneNumber ?? '') || !!(current || next);
+    name !== (user?.fullName ?? '') ||
+    phone !== (user?.phoneNumber ?? '') ||
+    !!(current || next || confirmation);
   useDirty(dirty, write.busy);
   return (
     <Screen>
-      <Title>{t('account')}</Title>
+      <PageHeader title={t('account')} description={t('shellAccountHint')} />
       <Section title={t('account')} icon="user">
         <Info label={t('email')} value={user?.email} />
         <Field
@@ -209,6 +449,7 @@ export function AccountScreen() {
             setSaved(false);
           }}
           keyboardType="phone-pad"
+          hint={t('shellPhoneHint')}
           maxLength={11}
           editable={!write.busy}
         />
@@ -245,13 +486,23 @@ export function AccountScreen() {
           onChangeText={setNext}
           secureTextEntry
           autoComplete="new-password"
+          hint={t('shellPasswordRules')}
           editable={!write.busy}
         />
-        <Txt muted>{t('passwordHint')}</Txt>
+        <Field
+          label={t('shellPasswordConfirm')}
+          value={confirmation}
+          onChangeText={setConfirmation}
+          secureTextEntry
+          autoComplete="new-password"
+          editable={!write.busy}
+          error={confirmation && confirmation !== next ? t('shellPasswordMismatch') : undefined}
+        />
+        <Txt muted>{t('shellPasswordSignIn')}</Txt>
         <Button
           label={t('changePassword')}
           loading={write.busy}
-          disabled={write.uncertain || !current || next.length < 8}
+          disabled={write.uncertain || !current || !isStrongPassword(next) || confirmation !== next}
           onPress={() =>
             void write.run(
               () =>
@@ -259,10 +510,11 @@ export function AccountScreen() {
                   currentPassword: current,
                   newPassword: next,
                 }),
-              () => {
+              async () => {
                 setCurrent('');
                 setNext('');
-                setSaved(true);
+                setConfirmation('');
+                await api.forgetSession();
               },
             )
           }
@@ -273,344 +525,63 @@ export function AccountScreen() {
     </Screen>
   );
 }
-function CancelScheduleButton({
-  label,
-  onPress,
-  disabled = false,
-  busy = false,
-  primary = false,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  busy?: boolean;
-  primary?: boolean;
-}) {
-  const foreground = primary ? colors.white : colors.danger;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: disabled || busy, busy }}
-      disabled={disabled || busy}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        minHeight: 44,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderWidth: 1,
-        borderColor: colors.danger,
-        borderRadius: 12,
-        backgroundColor: primary ? colors.danger : colors.white,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        opacity: disabled || busy ? 0.45 : pressed ? 0.7 : 1,
-      })}
-    >
-      {busy ? (
-        <ActivityIndicator color={foreground} />
-      ) : (
-        <Feather name="x-circle" size={17} color={foreground} />
-      )}
-      <Txt style={{ color: foreground, fontWeight: '700', flexShrink: 1 }}>{label}</Txt>
-    </Pressable>
-  );
-}
-function ScheduleWriteError({ error }: { error: unknown }) {
-  const { t } = useApp();
-  const key =
-    error instanceof ApiError
-      ? error.code === 4415
-        ? 'cancelScheduleBooked'
-        : error.code === 4404
-          ? 'conflict'
-          : error.code === 4402
-            ? 'cancelScheduleStateChanged'
-            : error.code === 4403
-              ? 'cancelScheduleReasonRequired'
-              : undefined
-      : undefined;
-  return key ? <Txt style={{ color: colors.danger }}>{t(key)}</Txt> : <ErrorBox error={error} />;
-}
-export function ProviderScheduleScreen() {
-  const { t, locale } = useApp();
-  const repo = useRepo();
-  const [p, setPage] = useState(0);
-  const day = useVietnamDay();
-  const load = useCallback(() => repo.schedules(p), [repo, p]);
-  const remote = useRemote(load);
-  const reload = remote.reload;
-  const write = useWrite();
-  const [selected, setSelected] = useState<ProviderSchedule>();
-  const [reason, setReason] = useState('');
-  const [saved, setSaved] = useState(false);
-  const [confirmed, setConfirmed] = useState<Record<string, ProviderSchedule>>({});
-  const lastAttempt = useRef<string>(undefined);
-  const closing = useRef(false);
-  const previousDay = useRef(day);
-  const [now, setNow] = useState(Date.now);
-  useDirty(!!selected && reason.length > 0, write.busy);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(timer);
-  }, []);
-  useEffect(() => {
-    if (previousDay.current !== day) {
-      previousDay.current = day;
-      void reload();
-    }
-  }, [day, reload]);
-  useEffect(() => {
-    // Keep the parsed mutation result visible until a matching or newer GET arrives.
-    setConfirmed((current) => {
-      const next = { ...current };
-      let changed = false;
-      remote.data?.items.forEach((item) => {
-        const previous = next[item.id];
-        if (
-          previous &&
-          (item.version > previous.version ||
-            (item.version === previous.version && item.status === previous.status))
-        ) {
-          delete next[item.id];
-          changed = true;
-        }
-      });
-      return changed ? next : current;
-    });
-  }, [remote.data]);
-  function latest(item: ProviderSchedule) {
-    const result = confirmed[item.id];
-    return result && result.version >= item.version ? result : item;
-  }
-  const current = remote.data?.items.find((item) => item.id === selected?.id);
-  const schedule = current ? latest(current) : undefined;
-  const locked = write.busy || write.uncertain || remote.loading || !!remote.error;
-  const valid =
-    !!schedule && canCancelSchedule(schedule, now) && !!reason.trim() && reason.length <= 500;
-  async function reconcile() {
-    if (write.busy) return;
-    const fresh = await remote.reload();
-    if (
-      fresh &&
-      (!lastAttempt.current || fresh.items.some((item) => item.id === lastAttempt.current))
-    )
-      write.reset();
-  }
-  async function close() {
-    if (write.busy || closing.current) return;
-    closing.current = true;
-    try {
-      if (
-        reason.length > 0 &&
-        !(await confirm(t('discardTitle'), t('discardHint'), t('discard'), t('cancel')))
-      )
-        return;
-      setSelected(undefined);
-      setReason('');
-    } finally {
-      closing.current = false;
-    }
-  }
-  function cancelSelected() {
-    if (locked || !valid || !schedule) return;
-    if (!canCancelSchedule(schedule)) {
-      setNow(Date.now());
-      return;
-    }
-    lastAttempt.current = schedule.id;
-    void write.run(
-      () => repo.cancelSchedule(schedule, reason),
-      async (result) => {
-        setConfirmed((items) => ({ ...items, [result.id]: result }));
-        setSelected(undefined);
-        setReason('');
-        setSaved(true);
-        await remote.reload();
-      },
-    );
-  }
-  function dateLabel(item: ProviderSchedule) {
-    return formatInstant(`${item.date}T00:00:00+07:00`, locale, {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'Asia/Ho_Chi_Minh',
-    });
-  }
-  return (
-    <>
-      <View
-        style={{ flex: 1 }}
-        pointerEvents={selected ? 'none' : 'auto'}
-        importantForAccessibility={selected ? 'no-hide-descendants' : 'auto'}
-      >
-        <Screen>
-          <Row>
-            <View style={{ flex: 1 }}>
-              <Title>{t('providerSchedule')}</Title>
-            </View>
-            <IconButton
-              label={t('refresh')}
-              icon="refresh-cw"
-              disabled={remote.loading || write.busy}
-              onPress={() => void reconcile()}
-            />
-          </Row>
-          <Txt muted>{t('providerHint')}</Txt>
-          {saved && <Txt>{t('cancelScheduleSuccess')}</Txt>}
-          {!selected && <ScheduleWriteError error={write.error} />}
-          {remote.data && <ErrorBox error={remote.error} />}
-          {remote.loading && remote.data && <Txt muted>{t('loading')}</Txt>}
-          <RemoteState
-            loading={remote.loading && !remote.data}
-            error={remote.data ? undefined : remote.error}
-            empty={remote.data?.items.length === 0}
-            retry={reconcile}
-          >
-            {remote.data?.items.map((loaded) => {
-              const item = latest(loaded);
-              return (
-                <Card key={item.id} style={{ gap: 9, padding: 16 }}>
-                  <Txt style={{ fontWeight: '700', color: colors.primary }}>{dateLabel(item)}</Txt>
-                  <Row>
-                    <Feather name="clock" size={20} color={colors.primary} />
-                    <Txt style={{ fontSize: 24, lineHeight: 31, fontWeight: '800' }}>
-                      {item.start.slice(0, 5)}–{item.end.slice(0, 5)}
-                    </Txt>
-                  </Row>
-                  <Row>
-                    <View style={{ flex: 1 }}>
-                      <Badge
-                        status={item.status === 'SCHEDULED' ? 'provider_SCHEDULED' : item.status}
-                      />
-                    </View>
-                    {canCancelSchedule(item, now) && (
-                      <CancelScheduleButton
-                        label={t('cancelSchedule')}
-                        disabled={write.busy || remote.loading || !!remote.error}
-                        onPress={() => {
-                          if (!canCancelSchedule(item)) {
-                            setNow(Date.now());
-                            return;
-                          }
-                          setSaved(false);
-                          setReason('');
-                          setSelected(item);
-                        }}
-                      />
-                    )}
-                  </Row>
-                  {!!item.note && <Txt muted>{item.note}</Txt>}
-                  {item.status === 'CANCELLED' && !!item.cancellationReason && (
-                    <Info label={t('cancelScheduleReason')} value={item.cancellationReason} />
-                  )}
-                </Card>
-              );
-            })}
-          </RemoteState>
-          {remote.data && remote.data.totalPages > 1 && (
-            <Pagination
-              {...remote.data}
-              onChange={(page) => {
-                if (!selected && !write.busy) setPage(page);
-              }}
-            />
-          )}
-        </Screen>
-      </View>
-      <Modal
-        visible={!!selected}
-        transparent
-        animationType="fade"
-        onRequestClose={() => void close()}
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#00000066' }} edges={['top', 'bottom']}>
-          <KeyboardAvoidingView style={{ flex: 1 }}>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}
-            >
-              <View accessibilityViewIsModal>
-                <Card style={{ width: '100%', maxWidth: 480, alignSelf: 'center', gap: 16 }}>
-                  <Row>
-                    <View style={{ flex: 1 }}>
-                      <Txt style={{ fontSize: 20, lineHeight: 28, fontWeight: '800' }}>
-                        {t('cancelSchedule')}
-                      </Txt>
-                    </View>
-                    <IconButton
-                      label={t('close')}
-                      icon="x"
-                      disabled={write.busy}
-                      onPress={() => void close()}
-                    />
-                  </Row>
-                  {selected && (
-                    <Txt style={{ fontWeight: '700' }}>
-                      {dateLabel(schedule ?? selected)} · {(schedule ?? selected).start.slice(0, 5)}
-                      –{(schedule ?? selected).end.slice(0, 5)}
-                    </Txt>
-                  )}
-                  <Txt muted>{t('cancelScheduleHint')}</Txt>
-                  {!remote.loading && !schedule && (
-                    <Txt style={{ color: colors.danger }}>{t('cancelScheduleMissing')}</Txt>
-                  )}
-                  {schedule?.status === 'CANCELLED' && (
-                    <>
-                      <Badge status="CANCELLED" />
-                      <Txt>{t('cancelScheduleAlreadyCancelled')}</Txt>
-                      <Info label={t('cancelScheduleReason')} value={schedule.cancellationReason} />
-                    </>
-                  )}
-                  {schedule &&
-                    schedule.status !== 'CANCELLED' &&
-                    !canCancelSchedule(schedule, now) && (
-                      <Txt>{t('cancelScheduleStateChanged')}</Txt>
-                    )}
-                  <Field
-                    label={t('cancelScheduleReason')}
-                    value={reason}
-                    onChangeText={setReason}
-                    multiline
-                    maxLength={500}
-                    editable={!write.busy && schedule?.status !== 'CANCELLED'}
-                  />
-                  <Txt muted>{t('cancelScheduleReasonLimit')}</Txt>
-                  <ScheduleWriteError error={write.error} />
-                  <ErrorBox error={remote.error} />
-                  {(!!write.error || !!remote.error || !schedule) && (
-                    <Button
-                      label={t('refresh')}
-                      kind="secondary"
-                      loading={remote.loading}
-                      disabled={write.busy}
-                      onPress={() => void reconcile()}
-                    />
-                  )}
-                  {schedule?.status !== 'CANCELLED' && (
-                    <CancelScheduleButton
-                      label={t('cancelScheduleConfirm')}
-                      primary
-                      busy={write.busy}
-                      disabled={locked || !valid}
-                      onPress={cancelSelected}
-                    />
-                  )}
-                  <Button
-                    label={t('cancelScheduleKeep')}
-                    kind="secondary"
-                    disabled={write.busy}
-                    onPress={() => void close()}
-                  />
-                </Card>
-              </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
-    </>
-  );
-}
+export { ProviderScheduleScreen } from '../availability/screen';
+
+const profileStyles = StyleSheet.create({
+  card: { padding: 16, gap: 20, elevation: 1 },
+  identity: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 16 },
+  identityText: { flex: 1, minWidth: 160, alignItems: 'flex-start', gap: 6 },
+  avatarButton: { width: 80, height: 80, borderRadius: 40 },
+  avatarImage: { width: 80, height: 80, borderRadius: 40 },
+  avatarFallback: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.pale,
+  },
+  initials: { fontSize: 26, lineHeight: 34, color: colors.primary, fontWeight: '800' },
+  camera: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.white,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  name: { fontSize: 24, lineHeight: 32, fontWeight: '800' },
+  body: { fontSize: 17, lineHeight: 26 },
+  completeness: { gap: 8 },
+  progressHeading: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  progressLabel: { flexShrink: 1, fontSize: 17, lineHeight: 26, fontWeight: '700' },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: colors.line, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 4, backgroundColor: colors.primary },
+  service: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.pale,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  serviceText: { flex: 1, fontSize: 17, lineHeight: 26, color: colors.primary, fontWeight: '500' },
+  linkCard: { paddingVertical: 8, paddingHorizontal: 16, gap: 4, elevation: 1 },
+  divider: { height: 1, backgroundColor: colors.line },
+  securityLinks: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8 },
+  pressed: { opacity: 0.65 },
+  disabled: { opacity: 0.5 },
+  error: { color: colors.danger },
+});

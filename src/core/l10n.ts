@@ -1,3 +1,9 @@
+import { bookingCopy } from './copy/booking';
+import { workCopy } from './copy/work';
+import { notificationCopy } from './copy/notifications';
+import { profileCopy } from './copy/profile';
+import { shellCopy } from './copy/shell';
+
 export const copy = {
   app: ['CareConnect', 'CareConnect'],
   caregiver: ['Người chăm sóc', 'Caregiver'],
@@ -383,6 +389,11 @@ export const copy = {
   verificationStatus: ['Xác minh hồ sơ', 'Profile verification'],
   caregiverStatus: ['Trạng thái chuyên môn', 'Professional status'],
   viewFile: ['Xem tài liệu', 'View document'],
+  ...bookingCopy,
+  ...workCopy,
+  ...notificationCopy,
+  ...profileCopy,
+  ...shellCopy,
 } as const;
 export type Locale = 'vi' | 'en';
 export function translate(locale: Locale, key: string): string {

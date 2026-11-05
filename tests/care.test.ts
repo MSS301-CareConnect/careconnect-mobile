@@ -4,12 +4,22 @@ import { SessionRepository } from '../src/features/sessions/repository';
 import { ReportRepository } from '../src/features/reports/repository';
 import { emptyReport } from '../src/features/reports/models';
 import { checkInAllowed, vietnamDay } from '../src/core/time';
+import { ApiError } from '../src/core/api';
 const list = (items: unknown[], page = 0, totalPages = 1) => ({
   items,
   page,
   totalPages,
   totalElements: items.length,
 });
+test.each(['start', 'end'] as const)(
+  'malformed successful session %s stays uncertain until reconciliation',
+  async (action) => {
+    const request = jest.fn(async () => ({}));
+    const repo = new SessionRepository({ request });
+    await expect(repo[action]('visit', {})).rejects.toMatchObject({ uncertain: true });
+    await expect(repo.session('session')).rejects.not.toBeInstanceOf(ApiError);
+  },
+);
 test('calendar queries use Vietnam date and history has no date bound', async () => {
   const request = jest.fn(async () => list([]));
   const repo = new VisitRepository({ request });

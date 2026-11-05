@@ -1,7 +1,7 @@
 import { expect, jest, test } from '@jest/globals';
 import { ApiClient } from '../src/core/api';
-import { ProfileRepository } from '../src/features/profile/repository';
-import { canCancelSchedule, parseSchedule } from '../src/features/profile/schedule';
+import { AvailabilityRepository } from '../src/features/availability/repository';
+import { canCancelSchedule, parseSchedule } from '../src/features/availability/models';
 
 const slot = {
   id: 'slot',
@@ -21,7 +21,7 @@ test('schedule reads retain the optimistic version and server cancellation reaso
     totalPages: 1,
     totalElements: 1,
   }));
-  const result = await new ProfileRepository({ request }).schedules();
+  const result = await new AvailabilityRepository({ request }).schedules();
   expect(result.items[0]).toMatchObject({ version: 7, cancellationReason: 'Server reason' });
 });
 
@@ -55,7 +55,7 @@ test('schedule cancellation sends the trimmed required reason, target status and
     cancellationReason: 'Personal schedule change',
     version: 8,
   }));
-  const result = await new ProfileRepository({ request }).cancelSchedule(
+  const result = await new AvailabilityRepository({ request }).cancelSchedule(
     parseSchedule(slot),
     '  Personal schedule change  ',
   );
@@ -72,7 +72,7 @@ test.each(['', '  \n ', 'a'.repeat(501)])(
   async (reason) => {
     const request = jest.fn<ApiClient['request']>();
     await expect(
-      new ProfileRepository({ request }).cancelSchedule(parseSchedule(slot), reason),
+      new AvailabilityRepository({ request }).cancelSchedule(parseSchedule(slot), reason),
     ).rejects.toThrow();
     expect(request).not.toHaveBeenCalled();
   },
@@ -86,6 +86,6 @@ test.each([
 ])('unreadable or inconsistent cancellation responses require reconciliation', async (response) => {
   const request = jest.fn<ApiClient['request']>(async () => response);
   await expect(
-    new ProfileRepository({ request }).cancelSchedule(parseSchedule(slot), 'Required reason'),
+    new AvailabilityRepository({ request }).cancelSchedule(parseSchedule(slot), 'Required reason'),
   ).rejects.toMatchObject({ uncertain: true, status: 0 });
 });

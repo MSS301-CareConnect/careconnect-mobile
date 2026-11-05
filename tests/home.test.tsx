@@ -4,7 +4,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import App from '../App';
 import { ApiClient } from '../src/core/api';
 
-function fixture({ empty = false, failFirst = false } = {}) {
+function fixture({ empty = false, failFirst = false, failRequests = false } = {}) {
   let token: string | null = 'refresh';
   let failed = false;
   const api = new ApiClient(
@@ -30,7 +30,10 @@ function fixture({ empty = false, failFirst = false } = {}) {
       else if (path === '/notifications/unread-count') result = { count: 0 };
       else if (path === '/notifications')
         result = { items: [], page: 0, totalPages: 0, totalElements: 0 };
-      else if (path === '/booking-occurrences') {
+      else if (path === '/bookings/caregiver-requests') {
+        if (failRequests) return new Response(JSON.stringify({ code: 503 }), { status: 503 });
+        result = { items: [], page: 0, totalPages: 1, totalElements: 7 };
+      } else if (path === '/booking-occurrences') {
         if (failFirst && !failed) {
           failed = true;
           return new Response(JSON.stringify({ code: 503 }), { status: 503 });
@@ -70,6 +73,29 @@ test('today section opens the assigned visits screen through View all', async ()
     await fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả' }));
     expect(await screen.findByRole('button', { name: 'Bộ lọc buổi chăm sóc' })).toBeTruthy();
     expect(await screen.findByText('Test first recipient')).toBeTruthy();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('Home exposes customer requests with actual server count and opens the request inbox', async () => {
+  const screen = await render(<App client={fixture()} />);
+  try {
+    await screen.findByLabelText('Yêu cầu đang chờ: 7');
+    await fireEvent.press(screen.getByRole('button', { name: 'Yêu cầu từ khách' }));
+    expect(await screen.findByText('Yêu cầu đặt lịch')).toBeTruthy();
+    expect(screen.getByText('Không có yêu cầu đang chờ trả lời.')).toBeTruthy();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('a failed request count is shown as unavailable instead of a fabricated zero', async () => {
+  const screen = await render(<App client={fixture({ failRequests: true })} />);
+  try {
+    await screen.findByText('Chưa tải được số yêu cầu. Bạn vẫn có thể mở danh sách để kiểm tra.');
+    expect(screen.queryByLabelText('Yêu cầu đang chờ: 0')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Yêu cầu từ khách' })).toBeTruthy();
   } finally {
     await screen.unmount();
   }

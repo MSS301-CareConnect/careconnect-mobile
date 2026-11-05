@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Modal, ScrollView, View } from 'react-native';
+import { Linking, Modal, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NavigationProp, RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../../core/app-context';
-import { useRemote, useWrite } from '../../core/hooks';
-import { optionalCoordinates } from '../../core/device';
-import { checkInAllowed, formatInstant } from '../../core/time';
+import { useReducedMotion } from '../../core/accessibility';
+import { useRemote } from '../../core/hooks';
+import { formatInstant } from '../../core/time';
 import {
   Badge,
   Button,
   Card,
   Chips,
-  ErrorBox,
   Field,
   Info,
   IconButton,
@@ -22,9 +23,10 @@ import {
   Title,
   Txt,
 } from '../../core/ui';
-import { Props } from '../../app/routes';
+import { MainTabs, Props, Routes, VisitListRange } from '../../app/routes';
+import { NavigationRow } from '../../core/navigation-row';
 import { VisitRepository } from './repository';
-import { SessionRepository } from '../sessions/repository';
+import { VisitActionPanel } from './action-panel';
 import { useVietnamDay as useDay } from '../../core/use-vietnam-day';
 import { VisitCard } from './card';
 import { statuses } from './models';
@@ -33,16 +35,31 @@ function useRepo() {
   return useMemo(() => new VisitRepository(api), [api]);
 }
 export function VisitsScreen() {
-  return <VisitList history={false} />;
+  const route = useRoute<RouteProp<MainTabs, 'Schedule'>>();
+  const navigation = useNavigation<NavigationProp<MainTabs, 'Schedule'>>();
+  const consumeRange = useCallback(() => navigation.setParams({ range: undefined }), [navigation]);
+  return (
+    <VisitList history={false} requestedRange={route.params?.range} consumeRange={consumeRange} />
+  );
 }
 export function HistoryScreen() {
   return <VisitList history />;
 }
-function VisitList({ history }: { history: boolean }) {
+function VisitList({
+  history,
+  requestedRange,
+  consumeRange,
+}: {
+  history: boolean;
+  requestedRange?: VisitListRange;
+  consumeRange?: () => void;
+}) {
   const { t } = useApp();
+  const navigation = useNavigation<NativeStackNavigationProp<Routes>>();
+  const reducedMotion = useReducedMotion();
   const repo = useRepo();
   const day = useDay();
-  const [range, setRange] = useState('upcoming');
+  const [range, setRange] = useState<string>(requestedRange ?? 'upcoming');
   const showHistory = history || range === 'history';
   const [status, setStatus] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
@@ -51,6 +68,15 @@ function VisitList({ history }: { history: boolean }) {
   const [dates, setDates] = useState<{ from?: string; to?: string }>({});
   const [filter, setFilter] = useState(false);
   const [p, setPage] = useState(0);
+  useEffect(() => {
+    if (history || !requestedRange) return;
+    setRange(requestedRange);
+    setDates({});
+    setStatus('');
+    setPage(0);
+    setFilter(false);
+    consumeRange?.();
+  }, [history, requestedRange, consumeRange]);
   const valid =
     (!from || (/^\d{4}-\d{2}-\d{2}$/.test(from) && !Number.isNaN(Date.parse(from)))) &&
     (!to || (/^\d{4}-\d{2}-\d{2}$/.test(to) && !Number.isNaN(Date.parse(to)))) &&
@@ -69,7 +95,7 @@ function VisitList({ history }: { history: boolean }) {
   return (
     <Screen>
       <Row>
-        <View style={{ flex: 1 }}>
+        <View style={styles.grow}>
           <Title>{t(showHistory ? 'history' : 'assignedVisits')}</Title>
         </View>
         {!showHistory && (
@@ -88,9 +114,19 @@ function VisitList({ history }: { history: boolean }) {
           label={t('refresh')}
           icon="refresh-cw"
           disabled={remote.loading}
-          onPress={() => void remote.reload()}
+          onPress={remote.reload}
         />
       </Row>
+      {!history && (
+        <Card>
+          <NavigationRow
+            label={t('shellRequests')}
+            description={t('shellRequestsHint')}
+            icon="inbox"
+            onPress={() => navigation.navigate('BookingRequests')}
+          />
+        </Card>
+      )}
       {!history && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <Chips
@@ -111,11 +147,15 @@ function VisitList({ history }: { history: boolean }) {
       {!showHistory && !!(dates.from || dates.to || status) && (
         <Txt muted>{t('filtersApplied')}</Txt>
       )}
-      <Modal visible={filter} animationType="slide" onRequestClose={() => setFilter(false)}>
-        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+      <Modal
+        visible={filter}
+        animationType={reducedMotion ? 'none' : 'fade'}
+        onRequestClose={() => setFilter(false)}
+      >
+        <SafeAreaView style={styles.grow} edges={['top']}>
           <Screen>
             <Row>
-              <View style={{ flex: 1 }}>
+              <View style={styles.grow}>
                 <Title>{t('visitsFilters')}</Title>
               </View>
               <IconButton label={t('close')} icon="x" onPress={() => setFilter(false)} />
@@ -175,28 +215,16 @@ function VisitList({ history }: { history: boolean }) {
 }
 
 export function VisitScreen({ route, navigation }: Props<'Visit'>) {
-  const { api } = useApp();
-  const sessions = useMemo(() => new SessionRepository(api), [api]);
   const { t, locale } = useApp();
   const repo = useRepo();
   const remote = useRemote(useCallback(() => repo.visit(route.params.id), [repo, route.params.id]));
-  const write = useWrite();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 15000);
-    return () => clearInterval(timer);
-  }, []);
-  async function reconcile() {
-    const value = await remote.reload();
-    if (value) write.reset();
-  }
   const visit = remote.data;
   return (
     <Screen>
       <RemoteState {...remote} retry={remote.reload}>
         {visit && (
           <>
-            <View style={{ gap: 8 }}>
+            <View style={styles.heading}>
               <Txt muted>{visit.bookingCode}</Txt>
               <Title>{visit.name || t('patient')}</Title>
               <Badge status={visit.status} />
@@ -212,7 +240,7 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
                   kind="secondary"
                   icon="phone"
                   label={t('call')}
-                  onPress={() => void Linking.openURL('tel:' + visit.phone)}
+                  onPress={() => Linking.openURL('tel:' + visit.phone)}
                 />
               )}
             </Section>
@@ -232,7 +260,7 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
                   ))}
                   {visit.snapshot.medications.length > 0 && (
                     <>
-                      <Txt style={{ fontWeight: '700' }}>{t('medication')}</Txt>
+                      <Txt style={styles.label}>{t('medication')}</Txt>
                       {visit.snapshot.medications.map((m, i) => (
                         <Info key={i} label={m.name} value={m.details} />
                       ))}
@@ -268,51 +296,24 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
                 <Txt>{visit.customerNote}</Txt>
               </Section>
             )}
-            <ErrorBox error={write.error} retry={reconcile} />
-            {visit.sessionId ? (
-              <Button
-                label={t('viewSession')}
-                onPress={() => navigation.navigate('Session', { id: visit.sessionId })}
-              />
-            ) : (
-              <>
-                {visit.status === 'SCHEDULED' && (
-                  <Button
-                    label={t('acknowledge')}
-                    disabled={write.uncertain}
-                    loading={write.busy}
-                    onPress={() =>
-                      void write.run(
-                        () => repo.acknowledge(visit.id),
-                        async () => {
-                          await remote.reload();
-                        },
-                      )
-                    }
-                  />
-                )}
-                {['SCHEDULED', 'ACKNOWLEDGED'].includes(visit.status) && (
-                  <>
-                    <Txt muted>{t('checkWindow')}</Txt>
-                    <Button
-                      label={t('start')}
-                      icon="play"
-                      disabled={write.uncertain || !checkInAllowed(visit.startAt, visit.endAt, now, visit.checkInOpensAt, visit.checkInClosesAt)}
-                      loading={write.busy}
-                      onPress={() =>
-                        void write.run(
-                          async () => sessions.start(visit.id, await optionalCoordinates()),
-                          (session) => navigation.navigate('Session', { id: session.id }),
-                        )
-                      }
-                    />
-                  </>
-                )}
-              </>
-            )}
           </>
         )}
       </RemoteState>
+      {visit && (
+        <VisitActionPanel
+          visit={visit}
+          repo={repo}
+          reload={remote.reload}
+          navigation={navigation}
+          unavailable={remote.loading || !!remote.error}
+          readError={remote.error}
+        />
+      )}
     </Screen>
   );
 }
+const styles = StyleSheet.create({
+  grow: { flex: 1 },
+  heading: { gap: 8 },
+  label: { fontWeight: '700' },
+});

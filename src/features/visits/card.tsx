@@ -16,6 +16,7 @@ export function VisitCard({ visit }: { visit: Visit }) {
       accessibilityRole="button"
       accessibilityLabel={`${visit.name} ${formatInstant(visit.startAt, locale)}, ${t('viewDetails')}`}
       onPress={() => nav.navigate('Visit', { id: visit.id })}
+      style={({ pressed }) => pressed && styles.pressed}
     >
       <Card style={styles.card}>
         <View style={styles.accent} />
@@ -25,7 +26,7 @@ export function VisitCard({ visit }: { visit: Visit }) {
             <Txt style={styles.details}>{t('viewDetails')}</Txt>
           </View>
           <View style={styles.info}>
-            <Feather name="clock" size={15} color={colors.muted} />
+            <Feather name="clock" size={15} color={colors.muted} accessible={false} />
             <Txt muted style={styles.infoText}>
               {formatInstant(visit.startAt, locale)} –{' '}
               {formatInstant(visit.endAt, locale, { hour: '2-digit', minute: '2-digit' })}
@@ -34,7 +35,7 @@ export function VisitCard({ visit }: { visit: Visit }) {
           <Badge status={visit.status} />
           {visit.address ? (
             <View style={styles.info}>
-              <Feather name="map-pin" size={16} color={colors.muted} />
+              <Feather name="map-pin" size={16} color={colors.muted} accessible={false} />
               <Txt muted style={styles.infoText}>
                 {visit.address}
               </Txt>
@@ -47,6 +48,7 @@ export function VisitCard({ visit }: { visit: Visit }) {
 }
 
 const styles = StyleSheet.create({
+  pressed: { opacity: 0.7 },
   card: { flexDirection: 'row', gap: 12, padding: 16, borderRadius: 24 },
   accent: { width: 4, borderRadius: 2, backgroundColor: colors.primary },
   content: { flex: 1, gap: 10 },

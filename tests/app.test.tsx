@@ -27,8 +27,8 @@ test.each(['SCHEDULED', 'IN_PROGRESS', 'COMPLETED'])(
     const visit = {
       id: 'v',
       bookingId: 'b',
-      startAt: '2026-11-01T03:00:00Z',
-      endAt: '2026-11-01T05:00:00Z',
+      startAt: new Date(Date.now() + 3600000).toISOString(),
+      endAt: new Date(Date.now() + 10800000).toISOString(),
       status,
       recipientName: 'Test Recipient',
       ...(hasSession ? { sessionId: 's' } : {}),
@@ -90,7 +90,7 @@ test('login retains entered credentials on server error and supports English', a
   await screen.findByText(/Bạn không có quyền truy cập/);
   expect(screen.getByDisplayValue('caregiver@example.test')).toBeTruthy();
   expect(screen.getByDisplayValue('retained-password')).toBeTruthy();
-  await fireEvent.press(screen.getByText('English'));
+  await fireEvent.press(screen.getByRole('button', { name: 'Tiếng Anh' }));
   expect(screen.getByText('Here for every moment of care')).toBeTruthy();
   await screen.unmount();
 });

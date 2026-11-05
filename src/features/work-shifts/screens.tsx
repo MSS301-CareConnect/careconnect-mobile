@@ -15,7 +15,7 @@ import {
   Txt,
 } from '../../core/ui';
 import { Props } from '../../app/routes';
-import { hasActiveRegistration, registrationBlockReason } from './models';
+import { hasActiveRegistration, registrationBlockReason, registrationShift } from './models';
 import { WorkShiftRepository } from './repository';
 import { RegistrationStatus, ShiftSummary } from './card';
 function useRepo() {
@@ -32,8 +32,11 @@ const errorKeys: Record<number, string> = {
   4351: 'workShiftAlreadyRegistered',
   4352: 'workShiftPendingOnly',
   4354: 'workShiftDeadlinePassed',
+  4355: 'workShiftTimeOffConflict',
+  4401: 'workShiftScheduleConflict',
+  4116: 'workShiftCenterInactive',
 };
-export function WorkShiftScreen({ route }: Props<'WorkShift'>) {
+export function WorkShiftScreen({ route, navigation }: Props<'WorkShift'>) {
   const { t } = useApp();
   const { id } = route.params;
   const repo = useRepo();
@@ -63,6 +66,7 @@ export function WorkShiftScreen({ route }: Props<'WorkShift'>) {
   }
   const data = remote.data;
   const registration = data?.registration;
+  const summary = data?.shift ?? (registration ? registrationShift(registration) : undefined);
   const active = hasActiveRegistration(data?.registration);
   const blockReason = data?.shift
     ? registrationBlockReason(data.shift, data.registration, data.eligible, now)
@@ -75,10 +79,12 @@ export function WorkShiftScreen({ route }: Props<'WorkShift'>) {
         {data && (
           <>
             <Card>
-              {data.shift ? (
+              {summary ? (
                 <>
-                  <ShiftSummary shift={data.shift} details />
-                  <Info label={t('workShiftNote')} value={data.shift.note} />
+                  <ShiftSummary shift={summary} details />
+                  {!!data.shift?.note && (
+                    <Info label={t('workShiftNote')} value={data.shift.note} />
+                  )}
                 </>
               ) : (
                 <Txt muted>{t('workShiftUnavailable')}</Txt>
@@ -90,7 +96,24 @@ export function WorkShiftScreen({ route }: Props<'WorkShift'>) {
                 <Info label={t('workShiftRegistrationNote')} value={registration.caregiverNote} />
                 <Info label={t('workShiftRejectionReason')} value={registration.rejectionReason} />
                 {registration.status === 'APPROVED' && (
-                  <Txt muted>{t('workShiftApprovedHint')}</Txt>
+                  <>
+                    <Txt muted>{t('workShiftApprovedHint')}</Txt>
+                    {registration.scheduleId &&
+                      registration.scheduleStatus === 'SCHEDULED' &&
+                      registration.scheduleVersion !== undefined && (
+                        <Button
+                          kind="danger"
+                          label={t('workShiftWithdraw')}
+                          disabled={locked}
+                          onPress={() =>
+                            navigation.navigate('ProviderSchedule', {
+                              scheduleId: registration.scheduleId,
+                              cancel: true,
+                            })
+                          }
+                        />
+                      )}
+                  </>
                 )}
                 {registration.status === 'PENDING' &&
                   (cancelConfirm ? (

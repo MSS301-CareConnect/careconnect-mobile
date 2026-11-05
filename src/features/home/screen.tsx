@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+// @refresh reset
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@react-native-vector-icons/feather/static';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,33 +9,55 @@ import { useApp } from '../../core/app-context';
 import { useRemote } from '../../core/hooks';
 import { useVietnamDay as useDay } from '../../core/use-vietnam-day';
 import { formatInstant } from '../../core/time';
-import { Card, Pagination, RemoteState, Screen, Txt, colors } from '../../core/ui';
+import {
+  Button,
+  Card,
+  ErrorBox,
+  Pagination,
+  RemoteState,
+  Screen,
+  Txt,
+  colors,
+} from '../../core/ui';
 import { VisitRepository } from '../visits/repository';
 import { VisitCard } from '../visits/card';
-function useRepo() {
-  const { api } = useApp();
-  return useMemo(() => new VisitRepository(api), [api]);
-}
+import { CareBanner } from './care-banner';
+
 export function HomeScreen() {
-  const { t, user, locale } = useApp();
-  const repo = useRepo();
+  const { api, t, user, locale } = useApp();
+  const repo = useMemo(() => new VisitRepository(api), [api]);
   const day = useDay();
+  const previousDay = useRef(day);
   const [p, setPage] = useState(0);
   const remote = useRemote(
     useCallback(() => repo.today(new Date(day + 'T12:00:00+07:00'), p), [repo, p, day]),
   );
   const nav = useNavigation<NativeStackNavigationProp<Routes>>();
+  useEffect(() => {
+    if (previousDay.current !== day) {
+      previousDay.current = day;
+      setPage(0);
+    }
+  }, [day]);
+  useEffect(() => {
+    if (remote.data && p > 0 && p >= remote.data.visits.totalPages)
+      setPage(Math.max(0, remote.data.visits.totalPages - 1));
+  }, [remote.data, p]);
+
   return (
-    <Screen>
+    <Screen contentContainerStyle={styles.screen}>
       <View style={styles.greeting}>
         <Txt muted>
-          {t('hello')}, {user?.fullName}
+          {t('hello')}
+          {user?.fullName ? ', ' + user.fullName : ''}
         </Txt>
-        <Txt style={styles.title}>{t('todayVisits')}</Txt>
+        <Txt accessibilityRole="header" style={styles.title}>
+          {t('todayVisits')}
+        </Txt>
         <View style={styles.date}>
-          <Feather name="calendar" size={15} color={colors.muted} />
+          <Feather name="calendar" size={17} color={colors.primary} accessible={false} />
           <Txt muted style={styles.dateText}>
-            {formatInstant(day + 'T05:00:00Z', locale, {
+            {formatInstant(day + 'T12:00:00+07:00', locale, {
               weekday: 'long',
               day: 'numeric',
               month: 'long',
@@ -43,57 +66,89 @@ export function HomeScreen() {
           </Txt>
         </View>
       </View>
-      <View style={styles.banner}>
-        <Image
-          source={require('../../../assets/images/care-at-home-hero.jpg')}
-          style={styles.bannerImage}
-          accessible={false}
-          resizeMode="contain"
-        />
-        <View pointerEvents="none" style={styles.bannerGradient} />
-        <Txt style={styles.tagline}>{t('tagline')}</Txt>
+
+      <CareBanner />
+
+      <View style={styles.stats}>
+        {(
+          [
+            { label: 'today', value: remote.data?.visits.totalElements, icon: 'calendar' },
+            { label: 'completed', value: remote.data?.completed, icon: 'check-circle' },
+          ] as const
+        ).map((stat) => (
+          <Card key={stat.label} style={styles.statCard}>
+            <Feather name={stat.icon} size={26} color={colors.primary} accessible={false} />
+            <View style={styles.statContent}>
+              <Txt style={styles.statLabel}>{t(stat.label)}</Txt>
+              <Txt
+                accessibilityLabel={t(stat.label) + ': ' + (stat.value ?? t('loading'))}
+                style={styles.statValue}
+              >
+                {stat.value ?? '—'}
+              </Txt>
+            </View>
+          </Card>
+        ))}
       </View>
-      {remote.data && !remote.loading && !remote.error && (
-        <View style={styles.stats}>
-          <Card style={styles.statCard}>
-            <View style={styles.statLabel}>
-              <Feather name="calendar" size={18} color={colors.primary} />
-              <Txt style={styles.statLabelText}>{t('today')}</Txt>
-            </View>
-            <Txt style={styles.statValue}>{remote.data.visits.totalElements}</Txt>
-          </Card>
-          <Card style={styles.statCard}>
-            <View style={styles.statLabel}>
-              <Feather name="check-circle" size={18} color={colors.primary} />
-              <Txt style={styles.statLabelText}>{t('completed')}</Txt>
-            </View>
-            <Txt style={styles.statValue}>{remote.data.completed}</Txt>
-          </Card>
-        </View>
-      )}
+
       <View style={styles.scheduleHeading}>
-        <Txt style={styles.sectionTitle}>{t('todaySchedule')}</Txt>
+        <Txt accessibilityRole="header" style={styles.sectionTitle}>
+          {t('todaySchedule')}
+        </Txt>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('viewAllVisits')}
-          onPress={() => nav.navigate('Tabs', { screen: 'Schedule' })}
+          onPress={() => nav.navigate('Tabs', { screen: 'Schedule', params: { range: 'today' } })}
           style={({ pressed }) => [styles.viewAll, pressed && styles.pressed]}
         >
           <Txt style={styles.viewAllText}>{t('viewAllVisits')}</Txt>
+          <Feather name="arrow-right" size={18} color={colors.primary} accessible={false} />
         </Pressable>
       </View>
-      <RemoteState {...remote} retry={remote.reload}>
+      {remote.data && <ErrorBox error={remote.error} retry={remote.reload} />}
+      <RemoteState
+        loading={remote.loading && !remote.data}
+        error={remote.data ? undefined : remote.error}
+        retry={remote.reload}
+      >
         {remote.data && (
           <>
-            {remote.data.visits.items.length ? (
-              remote.data.visits.items.map((v) => <VisitCard key={v.id} visit={v} />)
-            ) : (
-              <Card>
-                <Txt>{t('emptyVisits')}</Txt>
-                <Txt muted>{t('emptyHint')}</Txt>
+            {remote.data.visits.totalElements === 0 ? (
+              <Card style={styles.emptyCard}>
+                <View style={styles.emptyIcon}>
+                  <Feather name="sun" size={25} color={colors.primary} accessible={false} />
+                </View>
+                <Txt accessibilityRole="header" style={styles.emptyTitle}>
+                  {t('homeEmptyTitle')}
+                </Txt>
+                <Txt muted style={styles.emptyHint}>
+                  {t('homeEmptyHint')}
+                </Txt>
+                <View style={styles.emptyActions}>
+                  <Button
+                    label={t('homeRegister')}
+                    onPress={() =>
+                      nav.navigate('Tabs', {
+                        screen: 'Availability',
+                        params: { section: 'register' },
+                      })
+                    }
+                  />
+                  <Button
+                    label={t('homeUpcoming')}
+                    kind="secondary"
+                    onPress={() =>
+                      nav.navigate('Tabs', { screen: 'Schedule', params: { range: 'upcoming' } })
+                    }
+                  />
+                </View>
               </Card>
+            ) : (
+              remote.data.visits.items.map((visit) => <VisitCard key={visit.id} visit={visit} />)
             )}
-            <Pagination {...remote.data.visits} onChange={setPage} />
+            {remote.data.visits.totalPages > 1 && (
+              <Pagination {...remote.data.visits} onChange={setPage} />
+            )}
           </>
         )}
       </RemoteState>
@@ -102,51 +157,56 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { gap: 16, paddingTop: 12 },
   greeting: { gap: 4 },
   title: { fontSize: 24, lineHeight: 32, fontWeight: '800', letterSpacing: -0.4 },
-  date: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  dateText: { fontSize: 13, lineHeight: 20, flexShrink: 1 },
-  banner: {
-    backgroundColor: colors.primary,
-    borderRadius: 20,
-    padding: 18,
-    minHeight: 128,
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  bannerImage: { position: 'absolute', top: 0, right: 0, height: '100%', aspectRatio: 1.5 },
-  bannerGradient: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundImage:
-      'linear-gradient(to right, #087443 0%, rgba(8, 116, 67, 0.98) 40%, rgba(8, 116, 67, 0.2) 72%, rgba(8, 116, 67, 0.04) 100%)',
-  },
-  tagline: {
-    fontSize: 20,
-    lineHeight: 27,
-    fontWeight: '800',
-    color: colors.white,
-    maxWidth: '55%',
-  },
+  date: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  dateText: { fontSize: 14, lineHeight: 22, flexShrink: 1 },
   stats: { flexDirection: 'row', alignItems: 'stretch', gap: 12 },
   statCard: {
     flex: 1,
-    minHeight: 80,
-    padding: 12,
-    gap: 4,
-    borderRadius: 17,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 88,
+    padding: 14,
+    gap: 12,
+    borderRadius: 20,
     borderWidth: 0,
     backgroundColor: colors.pale,
   },
-  statLabel: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  statLabelText: { fontSize: 13, lineHeight: 20, color: colors.primary, flexShrink: 1 },
-  statValue: { fontSize: 28, lineHeight: 34, fontWeight: '800', color: colors.primary },
+  statContent: { flex: 1, minWidth: 0, gap: 2 },
+  statLabel: { fontSize: 14, lineHeight: 20, color: colors.muted, fontWeight: '500' },
+  statValue: { fontSize: 30, lineHeight: 38, fontWeight: '800', color: colors.primary },
   scheduleHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { flex: 1, fontSize: 17, lineHeight: 25, fontWeight: '700' },
-  viewAll: { minHeight: 44, minWidth: 44, justifyContent: 'center', paddingLeft: 4 },
-  viewAllText: { fontSize: 13, lineHeight: 20, fontWeight: '700', color: colors.primary },
+  sectionTitle: { flex: 1, fontSize: 18, lineHeight: 26, fontWeight: '800' },
+  viewAll: {
+    minHeight: 48,
+    minWidth: 48,
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 8,
+  },
+  viewAllText: { fontSize: 14, lineHeight: 22, fontWeight: '700', color: colors.primary },
+  emptyCard: {
+    minHeight: 224,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: { fontSize: 18, lineHeight: 26, fontWeight: '700', textAlign: 'center' },
+  emptyHint: { fontSize: 16, lineHeight: 24, textAlign: 'center' },
+  emptyActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
   pressed: { opacity: 0.7 },
 });

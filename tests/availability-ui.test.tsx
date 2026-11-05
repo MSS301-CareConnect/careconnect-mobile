@@ -5,6 +5,11 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import App from '../App';
 import { ApiClient } from '../src/core/api';
 import { vietnamDay } from '../src/core/time';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { AppProvider } from '../src/core/app-context';
+import { Routes } from '../src/app/routes';
+import { ProviderScheduleScreen } from '../src/features/availability/screen';
 
 type Failure = 'network' | 'response' | 'booked' | 'conflict';
 function fixture(
@@ -319,6 +324,43 @@ test('cancellation on a later page reconciles that page and never reuses a first
     await fireEvent.press(screen.getByRole('button', { name: 'Xác nhận hủy khung rảnh' }));
     await screen.findByText('Khung rảnh đã được hủy.');
     expect(f.writes[1]?.body).toMatchObject({ version: 9 });
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('approved-shift link fetches the target schedule beyond page one before withdrawing with its fresh version', async () => {
+  const f = fixture({ secondPage: true });
+  await f.api.restore();
+  const Stack = createNativeStackNavigator<Routes>();
+  const screen = await render(
+    <AppProvider client={f.api}>
+      <NavigationContainer>
+        <Stack.Navigator>
+          <Stack.Screen
+            name="ProviderSchedule"
+            initialParams={{ scheduleId: 'slot' }}
+            component={ProviderScheduleScreen}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </AppProvider>,
+  );
+  try {
+    await screen.findByLabelText('Lý do hủy khung rảnh');
+    expect(f.reads).toContain('1');
+    expect(f.writes).toHaveLength(0);
+    await fireEvent.changeText(
+      screen.getByLabelText('Lý do hủy khung rảnh'),
+      'Withdraw approved shift',
+    );
+    await fireEvent.press(screen.getByRole('button', { name: 'Xác nhận hủy khung rảnh' }));
+    await screen.findByText('Khung rảnh đã được hủy.');
+    expect(f.writes[0]?.body).toEqual({
+      status: 'CANCELLED',
+      reason: 'Withdraw approved shift',
+      version: 7,
+    });
   } finally {
     await screen.unmount();
   }

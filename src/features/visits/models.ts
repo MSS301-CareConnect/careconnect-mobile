@@ -25,6 +25,10 @@ export type Visit = {
   customerNote: string;
   phone: string;
   sessionId: string;
+  noShowReportedAt: string;
+  noShowDecidedAt: string;
+  noShowNote: string;
+  missedReason: string;
   services: string[];
   special: Detail[];
   snapshot?: {
@@ -46,6 +50,11 @@ function details(j: Record<string, unknown>, keys: string[]): Detail[] {
     return value ? [{ label, value }] : [];
   });
 }
+function instant(value: unknown, optional = false) {
+  const parsed = optional ? text(value) : required(value);
+  if (parsed && !Number.isFinite(Date.parse(parsed))) throw new Error('Invalid visit timestamp');
+  return parsed;
+}
 export function parseVisit(value: unknown): Visit {
   const j = object(value),
     snapshot = j.recipientSnapshot ? object(j.recipientSnapshot) : undefined;
@@ -56,16 +65,20 @@ export function parseVisit(value: unknown): Visit {
     id: required(j.id),
     bookingId: required(j.bookingId),
     bookingCode: text(j.bookingCode),
-    startAt: required(j.startAt),
-    endAt: required(j.endAt),
-    checkInOpensAt: text(j.checkInOpensAt),
-    checkInClosesAt: text(j.checkInClosesAt),
+    startAt: instant(j.startAt),
+    endAt: instant(j.endAt),
+    checkInOpensAt: instant(j.checkInOpensAt, true),
+    checkInClosesAt: instant(j.checkInClosesAt, true),
     status: required(j.status),
     name: text(j.recipientName),
     address: text(j.serviceAddress),
     customerNote: text(j.customerNote),
     phone: text(j.customerPhone),
     sessionId: text(j.sessionId),
+    noShowReportedAt: instant(j.noShowReportedAt, true),
+    noShowDecidedAt: instant(j.noShowDecidedAt, true),
+    noShowNote: text(j.noShowNote),
+    missedReason: text(j.missedReason),
     services: array(j.services).map((v) => text(object(v).serviceName)),
     special: details(j.specialNotes ? object(j.specialNotes) : {}, specialKeys),
     snapshot: snapshot

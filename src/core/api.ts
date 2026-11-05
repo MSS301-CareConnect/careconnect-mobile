@@ -234,6 +234,9 @@ export class ApiClient {
     }
     this.emit({ status: 'signedIn', user });
   }
+  async forgetSession() {
+    await this.clear();
+  }
   private async clear(error?: unknown) {
     ++this.epoch;
     this.access = null;

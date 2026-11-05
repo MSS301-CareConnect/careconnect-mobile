@@ -1,19 +1,37 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Feather } from '@react-native-vector-icons/feather/static';
+import { Image, StyleSheet, View } from 'react-native';
 import { useApp } from './app-context';
-import { Txt, colors } from './ui';
+import { Txt } from './ui';
+
+export function BrandMark({ size = 36 }: { size?: number }) {
+  // The supplied 52×57 logo contains a 36×36 mark at (9, 7). Clip its screenshot margin in layout.
+  const scale = size / 36;
+  return (
+    <View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={{ width: size, height: size, borderRadius: size * 0.22, overflow: 'hidden' }}
+    >
+      <Image
+        source={require('../../assets/images/careconnect-logo.png')}
+        accessible={false}
+        style={{
+          position: 'absolute',
+          width: 52 * scale,
+          height: 57 * scale,
+          left: -9 * scale,
+          top: -7 * scale,
+        }}
+      />
+    </View>
+  );
+}
 
 export function BrandTitle() {
   const { t } = useApp();
   return (
     <View style={styles.brand}>
-      <View accessible={false} importantForAccessibility="no-hide-descendants" style={styles.mark}>
-        <Feather name="heart" color={colors.white} size={23} />
-        <View style={styles.plus}>
-          <Feather name="plus" color={colors.primary} size={10} />
-        </View>
-      </View>
+      <BrandMark />
       <Txt numberOfLines={1} style={styles.name}>
         {t('app')}
       </Txt>
@@ -23,25 +41,6 @@ export function BrandTitle() {
 
 const styles = StyleSheet.create({
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
-  mark: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  plus: {
-    position: 'absolute',
-    bottom: 3,
-    right: 3,
-    width: 13,
-    height: 13,
-    borderRadius: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.pale,
-  },
   name: {
     fontSize: 23,
     lineHeight: 31,

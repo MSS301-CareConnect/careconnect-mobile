@@ -41,11 +41,6 @@ function fixture(
     async (input, init) => {
       const url = new URL(String(input));
       const path = url.pathname.replace('/api/v1', '');
-      if (
-        path === '/work-shifts' &&
-        (url.searchParams.has('fromDate') || url.searchParams.has('toDate'))
-      )
-        return new Response(JSON.stringify({ code: 4004 }), { status: 503 });
       requests.push({ method: init?.method, path, query: url.search });
       let result: unknown;
       if (path === '/auth/refresh') result = { accessToken: 'a', refreshToken: 'r' };
@@ -101,18 +96,7 @@ function fixture(
           version: 1,
           note: 'Test shift note',
         };
-        result =
-          path === '/work-shifts'
-            ? page([
-                {
-                  ...shift,
-                  id: 'past',
-                  shiftType: 'PAST SHIFT',
-                  workDate: vietnamDay(new Date(Date.now() - 86400000)),
-                },
-                shift,
-              ])
-            : shift;
+        result = path === '/work-shifts' ? page([shift]) : shift;
       } else return new Response(JSON.stringify({ code: 404 }), { status: 404 });
       return new Response(JSON.stringify({ code: 200, result }), { status: 200 });
     },

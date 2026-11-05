@@ -7,20 +7,26 @@ import {
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Feather } from '@react-native-vector-icons/feather/static';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../core/app-context';
 import { BrandTitle } from '../core/brand';
-import { Routes } from './routes';
+import { MainTabs, Routes } from './routes';
+import { ToolbarTabIcon, RoundedTabButton } from './tab-bar-ui';
 import { Button, Card, Screen, Title, Txt, colors } from '../core/ui';
 import { ForgotScreen, LoginScreen } from '../features/auth/screens';
 import { VisitsScreen, HistoryScreen, VisitScreen } from '../features/visits/screens';
 import { HomeScreen } from '../features/home/screen';
 import { SessionScreen } from '../features/sessions/screen';
 import { ReportScreen } from '../features/reports/screen';
-import { AccountScreen, ProfileScreen, ProviderScheduleScreen } from '../features/profile/screens';
+import { AccountScreen, ProfileScreen } from '../features/profile/screens';
+import { ProviderScheduleScreen, TimeOffScreen } from '../features/availability/screen';
+import { BookingRequestsScreen } from '../features/booking-requests/screen';
+import { KeptDepositsScreen } from '../features/earnings/screen';
+import { CertificatesScreen } from '../features/profile/certificates-screen';
+import { SecuritySessionsScreen } from '../features/profile/sessions-screen';
+import { useReducedMotion } from '../core/accessibility';
 import { WorkShiftScreen } from '../features/work-shifts/screens';
-import { WorkShiftsScreen } from '../features/work-shifts/board';
+import { WorkScheduleScreen } from '../features/availability/work-schedule-screen';
 import {
   NotificationBanner,
   NotificationBell,
@@ -28,13 +34,7 @@ import {
   NotificationsScreen,
 } from '../features/notifications/screens';
 const Stack = createNativeStackNavigator<Routes & { Login: undefined }>();
-const Tab = createBottomTabNavigator<{
-  Home: undefined;
-  Schedule: undefined;
-  Work: undefined;
-  Availability: undefined;
-  Profile: undefined;
-}>();
+const Tab = createBottomTabNavigator<MainTabs>();
 const navRef = createNavigationContainerRef<Routes & { Login: undefined }>();
 const theme = {
   ...DefaultTheme,
@@ -52,7 +52,7 @@ function Tabs() {
   const { t } = useApp();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
-  const extraTabHeight = Math.max(0, fontScale - 1) * 20;
+  const extraTabHeight = Math.max(0, fontScale - 1) * 56;
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -69,25 +69,30 @@ function Tabs() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarActiveBackgroundColor: colors.pale,
-        tabBarStyle: [styles.tabBar, { height: 72 + extraTabHeight + insets.bottom }],
+        tabBarStyle: [styles.tabBar, { height: 76 + extraTabHeight + insets.bottom }],
         tabBarItemStyle: styles.tabItem,
+        tabBarButton: (props) => <RoundedTabButton {...props} />,
         tabBarLabelStyle: styles.tabLabel,
+        tabBarLabel: ({ color, children }) => (
+          <Txt numberOfLines={2} style={[styles.tabLabel, { color }]}>
+            {children}
+          </Txt>
+        ),
         tabBarLabelPosition: 'below-icon',
-        tabBarIcon: ({ color, size }) => (
-          <Feather
+        tabBarIcon: ({ color, size, focused }) => (
+          <ToolbarTabIcon
             name={
               route.name === 'Home'
                 ? 'home'
                 : route.name === 'Schedule'
                   ? 'clipboard'
-                  : route.name === 'Work'
-                    ? 'briefcase'
-                    : route.name === 'Availability'
-                      ? 'calendar'
-                      : 'user'
+                  : route.name === 'Availability'
+                    ? 'calendar'
+                    : 'user'
             }
             color={color}
             size={size}
+            focused={focused}
           />
         ),
       })}
@@ -98,11 +103,10 @@ function Tabs() {
         component={VisitsScreen}
         options={{ title: t('assignedVisits') }}
       />
-      <Tab.Screen name="Work" component={WorkShiftsScreen} options={{ title: t('workShiftTab') }} />
       <Tab.Screen
         name="Availability"
-        component={ProviderScheduleScreen}
-        options={{ title: t('availability') }}
+        component={WorkScheduleScreen}
+        options={{ title: t('workScheduleTitle') }}
       />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: t('profile') }} />
     </Tab.Navigator>
@@ -111,27 +115,35 @@ function Tabs() {
 
 const styles = StyleSheet.create({
   header: { backgroundColor: colors.bg },
-  headerTitle: { left: 20, right: 80 },
+  headerTitle: { left: 16, right: 80 },
   headerRight: { paddingRight: 16 },
   tabBar: {
     backgroundColor: colors.white,
     borderTopWidth: 0,
-    borderRadius: 26,
-    marginHorizontal: 10,
-    marginBottom: 8,
-    paddingTop: 5,
-    paddingHorizontal: 5,
+    borderRadius: 24,
+    marginHorizontal: 8,
+    marginBottom: 6,
+    paddingTop: 4,
+    paddingHorizontal: 4,
     elevation: 5,
     shadowColor: colors.ink,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 12,
   },
-  tabItem: { borderRadius: 18, overflow: 'hidden', marginHorizontal: 1, marginBottom: 5 },
-  tabLabel: { fontSize: 10, fontWeight: '700', marginTop: 3 },
+  tabItem: { borderRadius: 16, overflow: 'hidden', marginHorizontal: 1, marginBottom: 3 },
+  tabLabel: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    marginTop: 2,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
 });
 export function AppNavigator() {
   const { api, t } = useApp();
+  const reducedMotion = useReducedMotion();
   const status = api.state.status;
   if (status === 'booting' || status === 'restoreError')
     return (
@@ -161,6 +173,7 @@ export function AppNavigator() {
             headerTitleStyle: { fontWeight: '700' },
             headerTintColor: colors.primary,
             headerBackTitle: t('back'),
+            animation: reducedMotion ? 'none' : 'default',
           }}
         >
           {signed ? (
@@ -185,7 +198,7 @@ export function AppNavigator() {
               <Stack.Screen
                 name="Notifications"
                 component={NotificationsScreen}
-                options={{ title: t('notifications') }}
+                options={{ title: t('notifications'), headerTitleAlign: 'center' }}
               />
               <Stack.Screen
                 name="Account"
@@ -193,14 +206,34 @@ export function AppNavigator() {
                 options={{ title: t('account') }}
               />
               <Stack.Screen
+                name="BookingRequests"
+                component={BookingRequestsScreen}
+                options={{ title: t('shellRequests') }}
+              />
+              <Stack.Screen
+                name="KeptDeposits"
+                component={KeptDepositsScreen}
+                options={{ title: t('keptDeposits') }}
+              />
+              <Stack.Screen
+                name="TimeOff"
+                component={TimeOffScreen}
+                options={{ title: t('timeOffTitle') }}
+              />
+              <Stack.Screen
+                name="Certificates"
+                component={CertificatesScreen}
+                options={{ title: t('certificates') }}
+              />
+              <Stack.Screen
+                name="SecuritySessions"
+                component={SecuritySessionsScreen}
+                options={{ title: t('shellSecurity') }}
+              />
+              <Stack.Screen
                 name="ProviderSchedule"
                 component={ProviderScheduleScreen}
                 options={{ title: t('providerSchedule') }}
-              />
-              <Stack.Screen
-                name="WorkShifts"
-                component={WorkShiftsScreen}
-                options={{ title: t('workShifts') }}
               />
               <Stack.Screen
                 name="WorkShift"

@@ -90,6 +90,81 @@ test('boundary rejects missing/invalid optimistic versions and preserves backend
   ).toBe('Server reason');
 });
 
+test('registration history retains embedded cancellation and linked schedule metadata without a shift fetch', async () => {
+  const request = jest.fn<ApiClient['request']>(async () =>
+    page([
+      {
+        ...registration,
+        registrationStatus: 'CANCELLED',
+        workDate: '2026-11-06',
+        startTime: '08:00',
+        endTime: '12:00',
+        shiftType: 'MORNING',
+        shiftStatus: 'CANCELLED',
+        shiftCancellationReason: 'Center closed',
+        scheduleId: 'linked',
+        scheduleStatus: 'CANCELLED',
+        scheduleVersion: 12,
+      },
+    ]),
+  );
+  const result = await new WorkShiftRepository({ request }).mine();
+  expect(result.items[0]?.registration).toMatchObject({
+    shiftCancellationReason: 'Center closed',
+    scheduleId: 'linked',
+    scheduleStatus: 'CANCELLED',
+    scheduleVersion: 12,
+  });
+  expect(result.items[0]?.shift).toMatchObject({
+    workDate: '2026-11-06',
+    startTime: '08:00',
+    status: 'CANCELLED',
+  });
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(() =>
+    parseRegistration({ ...registration, scheduleId: 'linked', scheduleVersion: -1 }),
+  ).toThrow();
+});
+
+test.each([
+  { workDate: '2026-02-30', startTime: '08:00', endTime: '12:00' },
+  { workDate: '2026-11-06', startTime: '25:00', endTime: '12:00' },
+  { workDate: '2026-11-06', startTime: '08:00', endTime: '08:00' },
+])('work-shift boundary refuses invalid embedded or full calendar intervals: %s', (times) => {
+  expect(() => parseRegistration({ ...registration, ...times })).toThrow();
+  expect(() => parseWorkShift({ ...shift, ...times })).toThrow();
+});
+
+test('work-shift server filters preserve pagination and do not manufacture empty-page totals', async () => {
+  const request = jest.fn<ApiClient['request']>(async (_method, path) =>
+    path === '/caregivers/me'
+      ? {
+          centerName: 'Test center',
+          centerStatus: 'ACTIVE',
+          caregiverStatus: 'ACTIVE',
+          verificationStatus: 'VERIFIED',
+        }
+      : path === '/work-shifts/registrations/me'
+        ? page([])
+        : { ...page([shift], 2, 8), totalElements: 147 },
+  );
+  const result = await new WorkShiftRepository({ request }).board(
+    Date.parse('2026-11-01T07:00:00Z'),
+    2,
+    { fromDate: '2026-11-03', toDate: '2026-11-09', shiftType: 'MORNING', hasVacancy: true },
+  );
+  expect(request).toHaveBeenCalledWith('GET', '/work-shifts', undefined, {
+    status: 'OPEN',
+    page: 2,
+    size: 20,
+    fromDate: '2026-11-03',
+    toDate: '2026-11-09',
+    shiftType: 'MORNING',
+    hasVacancy: 'true',
+  });
+  expect(result).toMatchObject({ page: 2, totalPages: 8, totalElements: 147 });
+});
+
 test('detail finds an active registration beyond the first page instead of enabling a duplicate', async () => {
   const request = jest.fn<Pick<ApiClient, 'request'>['request']>();
   request.mockImplementation(async (_method, path, _body, query) => {
@@ -132,11 +207,9 @@ test('register/cancel use the authoritative paths, note limit, PENDING state and
   expect(request).toHaveBeenCalledTimes(writes);
 });
 
-test('open shifts use server scope without broken optional date predicates; unavailable historical shifts do not hide registrations', async () => {
+test('unavailable historical shifts do not hide own registrations', async () => {
   const request = jest.fn<Pick<ApiClient, 'request'>['request']>();
-  request.mockImplementation(async (_method, path, _body, query) => {
-    if (path === '/work-shifts' && (query?.fromDate !== undefined || query?.toDate !== undefined))
-      throw new ApiError(503, 4004);
+  request.mockImplementation(async (_method, path) => {
     if (path === '/work-shifts/registrations/me') return page([registration]);
     if (path === '/work-shifts/shift') throw new Error('Not readable');
     return page([shift]);
@@ -194,7 +267,7 @@ test('pending cancellation remains available when its shift is deleted or no lon
   );
 });
 
-test('the work board finds new shifts after past OPEN pages and active registrations after page one', async () => {
+test('the work board uses server effective OPEN pagination and finds active registrations after page one', async () => {
   const request = jest.fn<Pick<ApiClient, 'request'>['request']>();
   request.mockImplementation(async (_method, path, _body, query) => {
     if (path === '/caregivers/me')
@@ -204,17 +277,15 @@ test('the work board finds new shifts after past OPEN pages and active registrat
         verificationStatus: 'VERIFIED',
       };
     if (path === '/work-shifts') {
-      expect(query?.fromDate).toBeUndefined();
-      return query?.page === 0
-        ? page([{ ...shift, id: 'past', workDate: '2026-10-31' }], 0, 2)
-        : page(
-            [
-              { ...shift, id: 'new', endTime: '17:04:00' },
-              { ...shift, id: 'registered', workDate: '2026-11-02' },
-            ],
-            1,
-            2,
-          );
+      expect(query?.fromDate).toBe('2026-11-01');
+      return page(
+        [
+          { ...shift, id: 'new', endTime: '17:04:00' },
+          { ...shift, id: 'registered', workDate: '2026-11-02' },
+        ],
+        0,
+        2,
+      );
     }
     return query?.page === 0
       ? page([], 0, 2)
@@ -228,8 +299,8 @@ test('the work board finds new shifts after past OPEN pages and active registrat
     Date.parse('2026-11-01T07:00:00Z'),
   );
   expect(board.centerName).toBe('Test center');
-  expect(board.items.map((item) => item.shift.id)).toEqual(['registered', 'new']);
-  expect(board.items[0]?.registration?.status).toBe('APPROVED');
-  expect(board.items[1]?.shift.endTime).toBe('17:04:00');
-  expect(board.items[1]?.registration).toBeUndefined();
+  expect(board.items.map((item) => item.shift.id)).toEqual(['new', 'registered']);
+  expect(board.items[1]?.registration?.status).toBe('APPROVED');
+  expect(board.items[0]?.shift.endTime).toBe('17:04:00');
+  expect(board.items[0]?.registration).toBeUndefined();
 });

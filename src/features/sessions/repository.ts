@@ -1,10 +1,17 @@
-import { ApiClient } from '../../core/api';
+import { ApiClient, ApiError } from '../../core/api';
 import { page } from '../../core/json';
 import { parseSession, parseNote } from './models';
 export class SessionRepository {
   constructor(private api: Pick<ApiClient, 'request'>) {}
+  private parseWrite(value: unknown) {
+    try {
+      return parseSession(value);
+    } catch {
+      throw new ApiError(0, 0, true);
+    }
+  }
   async start(id: string, coordinates: { latitude?: number; longitude?: number }) {
-    return parseSession(
+    return this.parseWrite(
       await this.api.request('POST', '/care-sessions', { occurrenceId: id, ...coordinates }),
     );
   }
@@ -36,6 +43,6 @@ export class SessionRepository {
     });
   }
   async end(id: string, coordinates: { latitude?: number; longitude?: number }) {
-    return parseSession(await this.api.request('POST', `/care-sessions/${id}/end`, coordinates));
+    return this.parseWrite(await this.api.request('POST', `/care-sessions/${id}/end`, coordinates));
   }
 }

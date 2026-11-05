@@ -2,30 +2,65 @@ import { ApiClient } from '../../core/api';
 import { number, object, page, required, text } from '../../core/json';
 export type Notification = {
   id: string;
+  type: string;
   title: string;
   body: string;
   createdAt: string;
   readAt: string;
   refType: string;
   refId: string;
+  bookingId: string;
+  occurrenceId: string;
 };
 export function parseNotification(value: unknown): Notification {
   const j = object(value);
   return {
     id: required(j.id),
+    type: text(j.type),
     title: text(j.title),
     body: text(j.body),
     createdAt: text(j.createdAt),
     readAt: text(j.readAt),
     refType: text(j.refType),
     refId: text(j.refId),
+    bookingId: text(j.bookingId),
+    occurrenceId: text(j.occurrenceId),
   };
+}
+export type NotificationTarget =
+  | { screen: 'Visit' | 'Session' | 'Report'; id: string }
+  | { screen: 'BookingRequests' | 'BookingVisits'; bookingId: string };
+export function isNotificationId(value: string | undefined): value is string {
+  return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 export function notificationTarget(item: {
   refType: string;
   refId: string;
-}): { screen: 'Visit' | 'Session' | 'Report'; id: string } | undefined {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.refId)) return;
+  type?: string;
+  bookingId?: string;
+  occurrenceId?: string;
+}): NotificationTarget | undefined {
+  const bookingId = isNotificationId(item.bookingId)
+    ? item.bookingId
+    : item.refType === 'BOOKING' && isNotificationId(item.refId)
+      ? item.refId
+      : undefined;
+  if (item.type === 'CAREGIVER_REQUEST' && bookingId)
+    return { screen: 'BookingRequests', bookingId };
+  if (
+    ![
+      'BOOKING',
+      'BOOKING_OCCURRENCE',
+      'CARE_SESSION',
+      'CARE_REPORT',
+      'COMPLAINT',
+      'FEEDBACK',
+    ].includes(item.refType)
+  )
+    return;
+  if (isNotificationId(item.occurrenceId)) return { screen: 'Visit', id: item.occurrenceId };
+  if (item.refType === 'BOOKING' && bookingId) return { screen: 'BookingVisits', bookingId };
+  if (!isNotificationId(item.refId)) return;
   const screen =
     item.refType === 'BOOKING_OCCURRENCE'
       ? 'Visit'
@@ -34,7 +69,11 @@ export function notificationTarget(item: {
         : item.refType === 'CARE_REPORT'
           ? 'Report'
           : undefined;
-  return screen ? { screen, id: item.refId } : undefined;
+  return screen
+    ? { screen, id: item.refId }
+    : bookingId
+      ? { screen: 'BookingVisits', bookingId }
+      : undefined;
 }
 export class NotificationFeed {
   unread?: number;
@@ -42,6 +81,7 @@ export class NotificationFeed {
   private active = false;
   private generation = 0;
   private loading = false;
+  private pending?: Promise<void>;
   private seeded = false;
   private seen = new Set<string>();
   private watermark = -Infinity;
@@ -59,13 +99,23 @@ export class NotificationFeed {
     this.banner = false;
     if (active) {
       this.timer = setInterval(() => {
-        void this.tick();
+        this.tick();
       }, 30000);
       await this.tick();
     }
   }
-  async tick() {
-    if (this.disposed || !this.active || this.loading) return;
+  tick(): Promise<void> {
+    if (this.disposed || !this.active) return Promise.resolve();
+    if (this.loading) return this.pending ?? Promise.resolve();
+    const pending = this.poll();
+    this.pending = pending;
+    return pending;
+  }
+  async refresh() {
+    await this.pending;
+    await this.tick();
+  }
+  private async poll() {
     this.loading = true;
     const generation = this.generation;
     try {
@@ -75,6 +125,9 @@ export class NotificationFeed {
       ]);
       if (this.disposed || !this.active || generation !== this.generation) return;
       const items = page(data, parseNotification).items;
+      const unread = number(object(count).count);
+      if (unread === undefined || !Number.isInteger(unread) || unread < 0)
+        throw new Error('Invalid unread count');
       this.banner =
         this.banner ||
         (this.seeded &&
@@ -92,13 +145,14 @@ export class NotificationFeed {
         else break;
       }
       this.seeded = true;
-      this.unread = number(object(count).count);
+      this.unread = unread;
+      if (unread === 0) this.banner = false;
       this.changed();
     } catch {
       /* Foreground polling must not interrupt navigation on temporary failure. */
     } finally {
       this.loading = false;
-      if (this.active && !this.disposed && generation !== this.generation) void this.tick();
+      if (this.active && !this.disposed && generation !== this.generation) this.tick();
     }
   }
   dismiss() {

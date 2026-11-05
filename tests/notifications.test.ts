@@ -1,5 +1,10 @@
 import { jest, test, expect } from '@jest/globals';
-import { NotificationFeed, notificationTarget } from '../src/features/notifications/feed';
+import {
+  NotificationFeed,
+  notificationTarget,
+  parseNotification,
+} from '../src/features/notifications/feed';
+import { NotificationRepository } from '../src/features/notifications/repository';
 const item = (id: string, createdAt = '2026-11-01T01:00:00Z') => ({
   id,
   title: 'Title',
@@ -81,5 +86,207 @@ test('notification watermark compares Instants with fractional seconds chronolog
   items = [item('fraction', '2026-11-01T01:00:00.500Z'), ...items];
   await feed.tick();
   expect(feed.banner).toBe(true);
+  feed.dispose();
+});
+
+const bookingId = '2c0917de-cc25-4d1a-a7b9-c2af52183dd4';
+const occurrenceId = 'f3b57ad4-87ae-4faa-a058-b0aa92ce5e98';
+
+test('resolved occurrence links take precedence over report and session references', () => {
+  const notification = parseNotification({
+    ...item('notice'),
+    type: 'REPORT_SUBMITTED',
+    refType: 'CARE_REPORT',
+    refId: bookingId,
+    bookingId,
+    occurrenceId,
+  });
+  expect(notification).toMatchObject({ type: 'REPORT_SUBMITTED', bookingId, occurrenceId });
+  expect(notificationTarget(notification)).toEqual({ screen: 'Visit', id: occurrenceId });
+});
+
+test('customer caregiver requests open the booking request inbox rather than a paid visit', () => {
+  expect(
+    notificationTarget(
+      parseNotification({
+        ...item('notice'),
+        type: 'CAREGIVER_REQUEST',
+        refType: 'BOOKING',
+        refId: bookingId,
+      }),
+    ),
+  ).toEqual({ screen: 'BookingRequests', bookingId });
+  expect(
+    notificationTarget(
+      parseNotification({
+        ...item('notice'),
+        type: 'BOOKING_CANCELLED',
+        refType: 'BOOKING',
+        refId: bookingId,
+      }),
+    ),
+  ).toEqual({ screen: 'BookingVisits', bookingId });
+  expect(
+    notificationTarget(
+      parseNotification({
+        ...item('notice'),
+        type: 'CAREGIVER_REQUEST',
+        refType: 'BOOKING',
+        refId: '../private',
+      }),
+    ),
+  ).toBeUndefined();
+});
+
+test('notification repository keeps server filters, pagination and exact own-user mutation contracts', async () => {
+  const calls: unknown[][] = [];
+  const repo = new NotificationRepository({
+    request: async (...args) => {
+      calls.push(args);
+      if (args[0] === 'GET')
+        return { items: [item('notice')], page: 2, totalPages: 4, totalElements: 63 };
+      return args[1] === '/notifications/read-state' ? { updated: 1 } : { deleted: 1 };
+    },
+  });
+  const result = await repo.list({
+    page: 2,
+    size: 20,
+    unreadOnly: true,
+    type: 'CAREGIVER_REQUEST',
+  });
+  expect(result.totalElements).toBe(63);
+  await repo.setRead(occurrenceId, true);
+  await repo.setRead(occurrenceId, false);
+  await repo.readAll();
+  expect(await repo.setReadMany([occurrenceId], false)).toBe(1);
+  await repo.remove(occurrenceId);
+  expect(await repo.removeMany([occurrenceId])).toBe(1);
+  expect(await repo.clearRead()).toBe(1);
+  expect(calls).toEqual([
+    [
+      'GET',
+      '/notifications',
+      undefined,
+      { page: 2, size: 20, unreadOnly: 'true', type: 'CAREGIVER_REQUEST' },
+    ],
+    ['PATCH', `/notifications/${occurrenceId}/read`],
+    ['PATCH', `/notifications/${occurrenceId}/unread`],
+    ['PATCH', '/notifications/read-all'],
+    ['PATCH', '/notifications/read-state', { ids: [occurrenceId], read: false }],
+    ['DELETE', `/notifications/${occurrenceId}`],
+    ['POST', '/notifications/deletions', { ids: [occurrenceId] }],
+    ['DELETE', '/notifications/read'],
+  ]);
+});
+
+test('invalid batches or page sizes never reach the API and malformed successful counts are uncertain', async () => {
+  const calls: unknown[][] = [];
+  const repo = new NotificationRepository({
+    request: async (...args) => {
+      calls.push(args);
+      return {};
+    },
+  });
+  await expect(repo.list({ size: 101 })).rejects.toThrow();
+  await expect(repo.setReadMany([], true)).rejects.toThrow();
+  await expect(repo.removeMany(Array.from({ length: 101 }, () => occurrenceId))).rejects.toThrow();
+  expect(calls).toHaveLength(0);
+  await expect(repo.setReadMany([occurrenceId], true)).rejects.toMatchObject({
+    uncertain: true,
+  });
+  await expect(repo.removeMany([occurrenceId])).rejects.toMatchObject({
+    uncertain: true,
+  });
+  expect(calls).toHaveLength(2);
+});
+
+test('booking links scan every authorized occurrence page and never read forbidden booking detail', async () => {
+  const calls: unknown[][] = [];
+  const repo = new NotificationRepository({
+    request: async (...args) => {
+      calls.push(args);
+      const query = args[3];
+      const p = typeof query?.page === 'number' ? query.page : 0;
+      return {
+        items:
+          p === 0
+            ? [{ id: 'other', bookingId: 'other' }]
+            : [
+                {
+                  id: occurrenceId,
+                  bookingId,
+                  startAt: '2026-11-01T01:00:00Z',
+                  endAt: '2026-11-01T02:00:00Z',
+                  status: 'COMPLETED',
+                },
+              ],
+        page: p,
+        totalPages: 2,
+        totalElements: 2,
+      };
+    },
+  });
+  expect(await repo.bookingVisits(bookingId)).toEqual([
+    {
+      id: occurrenceId,
+      startAt: '2026-11-01T01:00:00Z',
+      endAt: '2026-11-01T02:00:00Z',
+      status: 'COMPLETED',
+    },
+  ]);
+  expect(calls).toEqual([
+    ['GET', '/booking-occurrences', undefined, { page: 0, size: 100 }],
+    ['GET', '/booking-occurrences', undefined, { page: 1, size: 100 }],
+  ]);
+});
+
+test('a post-write feed refresh waits for an older poll then obtains the fresh server count', async () => {
+  let count = 1;
+  let defer = false;
+  let release!: () => void;
+  const feed = new NotificationFeed(
+    {
+      request: async (_method, path) => {
+        if (!path.endsWith('unread-count')) return page([item('notice')]);
+        const capturedCount = count;
+        if (defer) {
+          defer = false;
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return { count: capturedCount };
+      },
+    },
+    () => {},
+  );
+  await feed.setActive(true);
+  defer = true;
+  const pending = feed.tick();
+  count = 0;
+  const refreshed = feed.refresh();
+  release();
+  await pending;
+  await refreshed;
+  expect(feed.unread).toBe(0);
+  feed.dispose();
+});
+
+test('malformed unread counts retain the previous badge instead of inventing a new total', async () => {
+  let count: unknown = 3;
+  const feed = new NotificationFeed(
+    {
+      request: async (_method, path) =>
+        path.endsWith('unread-count') ? { count } : page([item('notice')]),
+    },
+    () => {},
+  );
+  await feed.setActive(true);
+  count = -4;
+  await feed.tick();
+  expect(feed.unread).toBe(3);
+  count = 1.5;
+  await feed.tick();
+  expect(feed.unread).toBe(3);
   feed.dispose();
 });

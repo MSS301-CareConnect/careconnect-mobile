@@ -6,10 +6,13 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   TextInput,
   TextInputProps,
+  TextProps,
+  useWindowDimensions,
   View,
   ViewStyle,
 } from 'react-native';
@@ -26,6 +29,17 @@ export const colors = {
   line: '#DFE6DD',
   danger: '#BA1A1A',
   white: '#FFFFFF',
+  surface: '#FFFFFF',
+  surfaceMuted: '#F0F5F1',
+  borderStrong: '#7C9383',
+  dangerBg: '#FFF0EF',
+  warning: '#8A5100',
+  warningBg: '#FFF3D6',
+  info: '#155D8A',
+  infoBg: '#EAF3FA',
+  neutral: '#52625A',
+  neutralBg: '#EEF1EF',
+  scrim: '#12271C80',
 };
 export function confirm(title: string, body: string, yes: string, no: string): Promise<boolean> {
   return new Promise((resolve) =>
@@ -45,14 +59,12 @@ export function Txt({
   style,
   muted = false,
   numberOfLines,
-}: {
-  children: React.ReactNode;
-  style?: React.ComponentProps<typeof Text>['style'];
+  ...props
+}: TextProps & {
   muted?: boolean;
-  numberOfLines?: number;
 }) {
   return (
-    <Text numberOfLines={numberOfLines} style={[s.text, muted && s.muted, style]}>
+    <Text {...props} numberOfLines={numberOfLines} style={[s.text, muted && s.muted, style]}>
       {children}
     </Text>
   );
@@ -76,8 +88,8 @@ export function IconButton({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({
-        minWidth: 44,
-        minHeight: 44,
+        minWidth: 48,
+        minHeight: 48,
         borderRadius: 14,
         backgroundColor: colors.white,
         borderWidth: 1,
@@ -87,29 +99,70 @@ export function IconButton({
         opacity: disabled ? 0.45 : pressed ? 0.7 : 1,
       })}
     >
-      <Feather name={icon} size={20} color={colors.primary} />
+      <Feather name={icon} size={20} color={colors.primary} accessible={false} />
     </Pressable>
   );
 }
 export function Title({ children }: { children: React.ReactNode }) {
-  return <Txt style={s.title}>{children}</Txt>;
+  return (
+    <Txt accessibilityRole="header" style={s.title}>
+      {children}
+    </Txt>
+  );
+}
+export function PageHeader({
+  title,
+  description,
+  eyebrow,
+  action,
+}: {
+  title: string;
+  description?: string;
+  eyebrow?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <View style={s.pageHeader}>
+      {eyebrow ? <Txt style={s.eyebrow}>{eyebrow}</Txt> : null}
+      <View style={s.headingRow}>
+        <View style={s.headingText}>
+          <Title>{title}</Title>
+        </View>
+        {action}
+      </View>
+      {description ? <Txt muted>{description}</Txt> : null}
+    </View>
+  );
 }
 export function Screen({
   children,
   scroll = true,
+  topInset = false,
+  contentContainerStyle,
 }: {
   children: React.ReactNode;
   scroll?: boolean;
+  topInset?: boolean;
+  contentContainerStyle?: StyleProp<ViewStyle>;
 }) {
+  const { width } = useWindowDimensions();
+  const contentStyle = [
+    s.screen,
+    { paddingHorizontal: width >= 600 ? 24 : 16 },
+    contentContainerStyle,
+  ];
   return (
-    <SafeAreaView style={s.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView
+      style={s.safe}
+      edges={topInset ? ['top', 'left', 'right', 'bottom'] : ['left', 'right', 'bottom']}
+    >
       <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {scroll ? (
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.screen}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={contentStyle}>
             {children}
           </ScrollView>
         ) : (
-          <View style={s.screen}>{children}</View>
+          <View style={contentStyle}>{children}</View>
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -163,7 +216,7 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         s.button,
-        kind === 'primary' ? s.primary : s.secondary,
+        kind === 'primary' ? s.primary : kind === 'danger' ? s.dangerButton : s.secondary,
         (disabled || loading) && s.disabled,
         pressed && { opacity: 0.75 },
       ]}
@@ -171,22 +224,47 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={foreground} />
       ) : icon ? (
-        <Feather name={icon} size={18} color={foreground} />
+        <Feather name={icon} size={18} color={foreground} accessible={false} />
       ) : null}
       <Text style={[s.buttonText, { color: foreground }]}>{label}</Text>
     </Pressable>
   );
 }
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
+export function Field({
+  label,
+  hint,
+  error,
+  trailing,
+  ...props
+}: TextInputProps & { label: string; hint?: string; error?: string; trailing?: React.ReactNode }) {
   return (
     <View style={s.field}>
       <Txt style={s.label}>{label}</Txt>
-      <TextInput
-        accessibilityLabel={label}
-        placeholderTextColor={colors.muted}
-        {...props}
-        style={[s.input, props.multiline && s.multiline, props.style]}
-      />
+      <View style={trailing ? [s.inputRow, error ? s.invalidInput : undefined] : undefined}>
+        <TextInput
+          accessibilityLabel={label}
+          accessibilityHint={error || hint}
+          placeholderTextColor={colors.muted}
+          {...props}
+          style={[
+            s.input,
+            props.multiline && s.multiline,
+            error && !trailing ? s.invalidInput : undefined,
+            trailing ? s.growInput : undefined,
+            props.style,
+          ]}
+        />
+        {trailing}
+      </View>
+      {error ? (
+        <Txt accessibilityLiveRegion="polite" style={s.fieldError}>
+          {error}
+        </Txt>
+      ) : hint ? (
+        <Txt muted style={s.fieldHint}>
+          {hint}
+        </Txt>
+      ) : null}
     </View>
   );
 }
@@ -220,19 +298,58 @@ export function Chips({
     </View>
   );
 }
-export function Badge({ status }: { status: string }) {
+export type BadgeTone = 'success' | 'warning' | 'info' | 'danger' | 'neutral';
+function badgeTone(status: string): BadgeTone {
+  const value = status.replace(/^(registration|workShift|provider)_/, '');
+  if (
+    ['REJECTED', 'MISSED', 'CAREGIVER_MISSED', 'CUSTOMER_NO_SHOW', 'DECLINED', 'EXPIRED'].includes(
+      value,
+    )
+  )
+    return 'danger';
+  if (
+    [
+      'PENDING',
+      'PENDING_CAREGIVER_CONFIRMATION',
+      'PENDING_CAREGIVER_ASSIGNMENT',
+      'AWAITING_INITIAL_PAYMENT',
+      'NEEDS_ATTENTION',
+    ].includes(value)
+  )
+    return 'warning';
+  if (['SCHEDULED', 'ACKNOWLEDGED', 'IN_PROGRESS', 'OPEN'].includes(value)) return 'info';
+  if (
+    [
+      'APPROVED',
+      'VERIFIED',
+      'ACTIVE',
+      'DONE',
+      'COMPLETED',
+      'ENDED',
+      'SUBMITTED',
+      'STABLE',
+      'IMPROVED',
+    ].includes(value)
+  )
+    return 'success';
+  return 'neutral';
+}
+const badgePalettes = {
+  success: { backgroundColor: colors.pale, color: colors.primary },
+  warning: { backgroundColor: colors.warningBg, color: colors.warning },
+  info: { backgroundColor: colors.infoBg, color: colors.info },
+  danger: { backgroundColor: colors.dangerBg, color: colors.danger },
+  neutral: { backgroundColor: colors.neutralBg, color: colors.neutral },
+};
+export function Badge({ status, tone }: { status: string; tone?: BadgeTone }) {
   const { t } = useApp();
+  const palette = badgePalettes[tone ?? badgeTone(status)];
   return (
-    <View
-      style={[
-        s.badge,
-        ['CANCELLED', 'EXPIRED', 'CAREGIVER_MISSED', 'CUSTOMER_NO_SHOW', 'DECLINED'].includes(status) && {
-          backgroundColor: '#FDECEA',
-        },
-      ]}
-    >
-      {status === 'COMPLETED' && <Feather name="check-circle" size={14} color={colors.primary} />}
-      <Txt style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>{t(status)}</Txt>
+    <View style={[s.badge, { backgroundColor: palette.backgroundColor }]}>
+      {status === 'COMPLETED' && (
+        <Feather name="check-circle" size={14} color={palette.color} accessible={false} />
+      )}
+      <Txt style={[s.badgeText, { color: palette.color }]}>{t(status)}</Txt>
     </View>
   );
 }
@@ -265,7 +382,11 @@ export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void 
               : 'error';
   return (
     <Card style={{ borderColor: '#F3C8C8', backgroundColor: '#FFF8F7' }}>
-      <Txt style={{ color: colors.danger }}>
+      <Txt
+        accessibilityRole="alert"
+        accessibilityLiveRegion="polite"
+        style={{ color: colors.danger }}
+      >
         {t(key)}
         {error instanceof ApiError && error.code !== 0 ? ` (${error.code})` : ''}
       </Txt>
@@ -346,47 +467,73 @@ export function Pagination({
 }
 export const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  screen: { padding: 20, gap: 18, paddingBottom: 32 },
-  text: { fontSize: 15, lineHeight: 23, color: colors.ink },
+  screen: {
+    paddingVertical: 20,
+    gap: 20,
+    paddingBottom: 32,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+  },
+  text: { fontSize: 16, lineHeight: 24, color: colors.ink },
   muted: { color: colors.muted },
-  title: { fontSize: 28, lineHeight: 36, fontWeight: '800', letterSpacing: -0.6 },
-  section: { fontSize: 17, lineHeight: 25, fontWeight: '700', flexShrink: 1 },
+  title: { fontSize: 26, lineHeight: 34, fontWeight: '800', letterSpacing: -0.4 },
+  pageHeader: { gap: 8 },
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headingText: { flex: 1 },
+  eyebrow: { fontSize: 13, lineHeight: 20, fontWeight: '700', color: colors.primary },
+  section: { fontSize: 18, lineHeight: 26, fontWeight: '700', flexShrink: 1 },
   card: {
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 22,
-    padding: 18,
-    gap: 14,
+    borderRadius: 20,
+    padding: 16,
+    gap: 16,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   button: {
-    minHeight: 50,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 14,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 9,
+    gap: 8,
   },
   primary: { backgroundColor: colors.primary },
   secondary: { backgroundColor: colors.pale, borderWidth: 1, borderColor: '#D9E5D7' },
+  dangerButton: { backgroundColor: colors.dangerBg, borderWidth: 1, borderColor: colors.danger },
   disabled: { opacity: 0.45 },
-  buttonText: { fontSize: 15, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
+  buttonText: { fontSize: 16, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
   field: { gap: 7 },
   label: { fontSize: 13, fontWeight: '700' },
   input: {
-    minHeight: 50,
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: '#CCD7CA',
+    borderColor: colors.borderStrong,
     borderRadius: 13,
-    padding: 13,
+    padding: 12,
     backgroundColor: colors.white,
     color: colors.ink,
     fontSize: 16,
   },
   multiline: { minHeight: 110, textAlignVertical: 'top' },
+  invalidInput: { borderColor: colors.danger, borderWidth: 2 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: 13,
+    backgroundColor: colors.white,
+    paddingRight: 4,
+  },
+  growInput: { flex: 1, minWidth: 0, borderWidth: 0, backgroundColor: 'transparent' },
+  fieldHint: { fontSize: 13, lineHeight: 20 },
+  fieldError: { fontSize: 13, lineHeight: 20, color: colors.danger },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     minHeight: 48,
@@ -405,7 +552,8 @@ export const s = StyleSheet.create({
     backgroundColor: colors.pale,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
   },
+  badgeText: { fontSize: 13, lineHeight: 20, fontWeight: '700', flexShrink: 1 },
   info: { gap: 3 },
 });

@@ -1,22 +1,31 @@
 import { ApiClient, ApiError } from '../../core/api';
 import { object, page, required, text } from '../../core/json';
+import { vietnamDay } from '../../core/time';
 import {
   hasActiveRegistration,
   parseRegistration,
   parseWorkShift,
   Registration,
-  shiftStart,
-  WorkShift,
+  registrationShift,
 } from './models';
+
+export type ShiftFilters = {
+  fromDate?: string;
+  toDate?: string;
+  shiftType?: string;
+  hasVacancy?: boolean;
+};
 
 export class WorkShiftRepository {
   constructor(private api: Pick<ApiClient, 'request'>) {}
-  async open(p = 0, size = 20) {
+  async open(p = 0, size = 20, filters: ShiftFilters = {}) {
     return page(
       await this.api.request('GET', '/work-shifts', undefined, {
         status: 'OPEN',
         page: p,
         size,
+        ...filters,
+        hasVacancy: filters.hasVacancy === undefined ? undefined : String(filters.hasVacancy),
       }),
       parseWorkShift,
     );
@@ -24,18 +33,23 @@ export class WorkShiftRepository {
   async shift(id: string) {
     return parseWorkShift(await this.api.request('GET', `/work-shifts/${id}`));
   }
-  async registrations(p = 0, size = 20) {
+  async registrations(p = 0, size = 20, status?: 'PENDING' | 'APPROVED') {
     return page(
       await this.api.request('GET', '/work-shifts/registrations/me', undefined, {
         page: p,
         size,
+        status,
       }),
       parseRegistration,
     );
   }
-  async mine(p = 0) {
-    const registrations = await this.registrations(p);
-    const ids = [...new Set(registrations.items.map((r) => r.workShiftId))];
+  async mine(p = 0, status?: 'PENDING' | 'APPROVED') {
+    const registrations = await this.registrations(p, 20, status);
+    const ids = [
+      ...new Set(
+        registrations.items.filter((r) => !registrationShift(r)).map((r) => r.workShiftId),
+      ),
+    ];
     const shifts = new Map(
       await Promise.all(
         ids.map(async (id) => [id, await this.shift(id).catch(() => undefined)] as const),
@@ -45,8 +59,22 @@ export class WorkShiftRepository {
       ...registrations,
       items: registrations.items.map((registration) => ({
         registration,
-        shift: shifts.get(registration.workShiftId),
+        shift: registrationShift(registration) ?? shifts.get(registration.workShiftId),
       })),
+    };
+  }
+  async registrationOverview() {
+    const [open, pending, approved, profile] = await Promise.all([
+      this.open(0, 1, { fromDate: vietnamDay() }),
+      this.registrations(0, 1, 'PENDING'),
+      this.registrations(0, 1, 'APPROVED'),
+      this.api.request('GET', '/caregivers/me'),
+    ]);
+    return {
+      open: open.totalElements,
+      pending: pending.totalElements,
+      approved: approved.totalElements,
+      centerName: text(object(profile).centerName),
     };
   }
   private async allRegistrations() {
@@ -61,17 +89,9 @@ export class WorkShiftRepository {
     const matches = (await this.allRegistrations()).filter((r) => r.workShiftId === id);
     return matches.find(hasActiveRegistration) ?? matches[0];
   }
-  private async allOpen() {
-    const items: WorkShift[] = [];
-    for (let p = 0; ; p++) {
-      const result = await this.open(p, 100);
-      items.push(...result.items);
-      if (p + 1 >= result.totalPages) return items;
-    }
-  }
-  async board(now = Date.now()) {
+  async board(now = Date.now(), p = 0, filters: ShiftFilters = {}) {
     const [shifts, registrations, profile] = await Promise.all([
-      this.allOpen(),
+      this.open(p, 20, { fromDate: vietnamDay(new Date(now)), ...filters }),
       this.allRegistrations(),
       this.api.request('GET', '/caregivers/me'),
     ]);
@@ -80,14 +100,14 @@ export class WorkShiftRepository {
       registrations.filter(hasActiveRegistration).map((r) => [r.workShiftId, r]),
     );
     return {
+      ...shifts,
       centerName: text(j.centerName),
       loadedAt: now,
       eligible:
-        required(j.caregiverStatus) === 'ACTIVE' && required(j.verificationStatus) === 'VERIFIED',
-      items: shifts
-        .filter((shift) => shiftStart(shift) > now)
-        .sort((a, b) => shiftStart(a) - shiftStart(b))
-        .map((shift) => ({ shift, registration: active.get(shift.id) })),
+        required(j.caregiverStatus) === 'ACTIVE' &&
+        required(j.verificationStatus) === 'VERIFIED' &&
+        (!j.centerStatus || j.centerStatus === 'ACTIVE'),
+      items: shifts.items.map((shift) => ({ shift, registration: active.get(shift.id) })),
     };
   }
   async detail(id: string) {
@@ -105,7 +125,9 @@ export class WorkShiftRepository {
       shift: shiftResult.shift,
       registration,
       eligible:
-        required(j.caregiverStatus) === 'ACTIVE' && required(j.verificationStatus) === 'VERIFIED',
+        required(j.caregiverStatus) === 'ACTIVE' &&
+        required(j.verificationStatus) === 'VERIFIED' &&
+        (!j.centerStatus || j.centerStatus === 'ACTIVE'),
     };
   }
   async register(id: string, note: string) {

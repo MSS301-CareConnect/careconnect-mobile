@@ -1,5 +1,7 @@
 # Hướng dẫn chạy CareConnect Mobile (React Native CLI)
 
+Nghiệp vụ Caregiver cập nhật05/11/2026 và đường dẫn vào từng chức năng: [TEST_CAREGIVER_2026-11-05.md](TEST_CAREGIVER_2026-11-05.md). Đối chiếu hợp đồng BE/FE: [BE_FE_ALIGNMENT_2026-11-05.md](BE_FE_ALIGNMENT_2026-11-05.md).
+
 Repository này dùng **React Native CLI + TypeScript**, hiện chỉ nhắm **Android**, cho tài khoản CAREGIVER. `android/` là native source được quản lý trong Git, có thể mở bằng Android Studio. Quyết định CLI ngày 01/11/2026 thay thế kế hoạch Expo trung gian; không chạy Expo prebuild hoặc development launcher.
 
 ## 1. Chuẩn bị máy phát triển Android
@@ -154,21 +156,27 @@ Nếu lưu/upload báo chưa rõ kết quả, bấm **Tải lại trạng thái*
 ## 9. Kiểm thử đăng ký ca làm việc
 
 1. Trên FE, Admin duyệt hồ sơ caregiver đạt VERIFIED/ACTIVE; Manager cùng trung tâm tạo ca OPEN trong tương lai, còn chỗ.
-2. Mobile đăng nhập CAREGIVER, mở **Ca làm việc**. Ca sắp tới có ngày/giờ chính, nút **Đăng ký ca** hoặc nhãn **Đã đăng ký**. **Đăng ký của tôi** nằm ngay dưới; đăng ký quá giờ vẫn giữ lịch sử trạng thái.
+2. Mobile đăng nhập CAREGIVER, mở **Lịch làm việc → Đăng ký ca**. Màn hình có **Ca mở / Chờ duyệt / Đã duyệt / Lịch sử**; số lượng được đọc từ BE. Ca sắp tới có ngày/giờ chính, nút **Đăng ký ca** hoặc nhãn **Đã đăng ký**. Lịch sử giữ toàn bộ đăng ký và kết quả xử lý. Tab **Ca làm việc** riêng đã được gộp vào đây.
 3. Kiểm tra giờ Việt Nam UTC+07, trung tâm, số người được duyệt và hạn đăng ký. Nhập ghi chú tối đa 2.000 ký tự rồi gửi. Kết quả phải là PENDING, chưa tạo lịch rảnh được duyệt và chưa phải booking chăm sóc.
 4. Khi PENDING, kiểm tra hủy với xác nhận và version hiện tại. Nếu Manager vừa duyệt, phải đọc lại trạng thái thay vì hủy lặp.
-5. Manager duyệt trên FE; mobile tải lại để thấy APPROVED, không có nút hủy đăng ký tại **Ca làm việc**. Khung giờ duyệt xuất hiện ở **Lịch rảnh**, có luồng hủy khung rảnh riêng theo điều kiện bên dưới. Booking chăm sóc nằm trong **Buổi được giao**, lịch sử ở **Buổi được giao → Lịch sử**. Bộ lọc chỉ áp dụng khi bấm **Áp dụng bộ lọc**.
+5. Manager duyệt trên FE; mobile tải lại rồi chọn **Đã duyệt** để thấy APPROVED. Trong chi tiết đăng ký, **Rút ca đã duyệt** mở luồng hủy đúng khung rảnh liên kết. Khung giờ duyệt cũng xuất hiện ở **Lịch làm việc → Lịch theo ngày**. Booking chăm sóc nằm trong **Buổi được giao**, lịch sử ở **Buổi được giao → Lịch sử**. Bộ lọc chỉ áp dụng khi bấm **Áp dụng**.
 6. Thử ca đã bắt đầu, hết hạn, đủ người hoặc hồ sơ chưa xác minh: app giải thích, BE quyết định cuối. Lỗi mạng giữ ghi chú và yêu cầu đọc lại trạng thái trước lần gửi tiếp.
 
 Jest dùng API giả có kiểm soát, không thay thế duyệt đăng ký thật trên FE/BE. Sửa JavaScript/TypeScript khi Metro chạy dùng Fast Refresh/Reload; đổi native code mới build/cài lại.
 
 ### Hủy khung rảnh
 
-1. Mở **Lịch rảnh**, chọn khung có trạng thái **Đang mở** và chưa qua giờ kết thúc. Bấm **Hủy khung rảnh**.
+1. Mở **Lịch làm việc → Lịch theo ngày**, chọn **Xem chi tiết** của khung rảnh có trạng thái **Đang mở** và chưa qua giờ kết thúc, rồi mở **Hủy khung rảnh**. Có thể mở cùng luồng từ chi tiết đăng ký đã duyệt.
 2. Nhập lý do hủy (bắt buộc, tối đa 500 ký tự), kiểm tra ngày/giờ rồi xác nhận hủy trong form. Mở form hoặc nhập lý do chưa gửi yêu cầu hủy.
-3. Khi backend xác nhận thành công, khung chuyển thành **Đã hủy**. Backend cũng xử lý đăng ký liên quan; không cần hủy thêm ở trang Ca làm việc.
+3. Khi backend xác nhận thành công, khung chuyển thành **Đã hủy**. Backend cũng xử lý đăng ký liên quan; không cần gửi thêm thao tác hủy đăng ký.
 4. Khung đã có buổi chăm sóc được phân công sẽ bị backend từ chối hủy. Nếu có lỗi mạng hoặc lịch vừa thay đổi, giữ lý do và tải lại trạng thái trước khi thử tiếp; không bấm gửi lặp.
 5. Thử thêm trường hợp đóng form đang nhập lý do, lỗi đọc lại và khung đã hủy/đã qua giờ kết thúc. Các kiểm thử tự động dùng dữ liệu giả; quá trình sửa giao diện không hủy khung giờ thật.
+
+### Lịch làm việc và ngày nghỉ
+
+Thanh dưới hiện có **Hôm nay / Buổi được giao / Lịch làm việc / Hồ sơ**. Trong **Lịch làm việc**, ba mục là **Lịch theo ngày / Đăng ký ca / Ngày nghỉ**; không có nút Ngày nghỉ riêng cạnh tải lại. Thanh tuần hiển thị ngày/tháng, không kèm năm. Thẻ buổi chăm sóc giữ tên bệnh nhân, địa chỉ, ngày/giờ, trạng thái và **Xem chi tiết**; ghi chú nằm trong chi tiết. Khung rảnh chưa gắn bệnh nhân nên chỉ hiển thị nhãn khung rảnh và ngày/giờ, trạng thái.
+
+Chọn **Ngày nghỉ → Thêm ngày nghỉ** để khai báo hoặc xóa khoảng nghỉ. Biểu mẫu đang mở, thao tác đang gửi hoặc kết quả chưa rõ sẽ khóa chuyển mục để giữ nội dung và trạng thái xử lý.
 
 ## 10. Source và tài liệu lịch sử
 
