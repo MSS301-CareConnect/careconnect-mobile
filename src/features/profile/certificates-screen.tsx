@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Image,
-  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -46,6 +45,7 @@ import {
   certificateFieldErrors,
   CertificateFieldErrors,
 } from './certificate-fields';
+import { CertificatePreview } from './certificate-preview';
 
 const emptyDraft = (): CertificateDraft => ({
   name: '',
@@ -77,6 +77,7 @@ export function CertificatesScreen() {
   const [visible, setVisible] = useState(false);
   const formScroll = useRef<React.ElementRef<typeof ScrollView>>(null);
   const [existing, setExisting] = useState<Certificate>();
+  const [previewId, setPreviewId] = useState('');
   const [draft, setDraft] = useState(emptyDraft);
   const [touched, setTouched] = useState<Partial<Record<keyof CertificateDraft, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
@@ -126,12 +127,14 @@ export function CertificatesScreen() {
     if (busy) return;
     if (dirty && !(await ask(t('discardTitle'), t('discardHint'), t('discard')))) return;
     setVisible(false);
+    setPreviewId('');
     setFile(undefined);
   }
-  function edit(value?: Certificate) {
+  function openCertificate(value?: Certificate) {
     if (locked || (!value && unknownCreate)) return;
     const next = value ? asDraft(value) : emptyDraft();
     setExisting(value);
+    setPreviewId('');
     setDraft(next);
     setTouched({});
     setSubmitted(false);
@@ -184,11 +187,11 @@ export function CertificatesScreen() {
   }
   async function save() {
     setSubmitted(true);
-    if (!validCertificate(draft) || (!existing && !file)) {
+    if ((!existing && !validCertificate(draft)) || !file) {
       formScroll.current?.scrollTo({ y: 0, animated: !reducedMotion });
       return;
     }
-    if (locked || fileReview || unknownCreate || !validCertificate(draft) || !remote.data) return;
+    if (locked || fileReview || unknownCreate || !remote.data) return;
     const caregiverId = remote.data.caregiverId;
     let checkpoint = existing;
     let metadataCheckpoint = false;
@@ -225,13 +228,14 @@ export function CertificatesScreen() {
         if (await remote.reload()) {
           setNeedsRefresh(false);
           setVisible(false);
+          setPreviewId('');
           setFile(undefined);
         }
       },
     );
   }
   async function chooseDate(key: 'issuedDate' | 'expiryDate') {
-    if (busy || unknownCreate) return;
+    if (busy || unknownCreate || existing) return;
     setPickerBusy(true);
     setDateError('');
     try {
@@ -271,6 +275,7 @@ export function CertificatesScreen() {
     await write.run(
       () => repo.removeMedia('CERTIFICATE', existing.id, value.id),
       async () => {
+        if (previewId === value.id) setPreviewId('');
         setNeedsRefresh(true);
         const [fresh, links] = await Promise.all([remote.reload(), media.reload()]);
         if (fresh && links) {
@@ -304,7 +309,11 @@ export function CertificatesScreen() {
         <Screen>
           <PageHeader title={t('certTitle')} description={t('certHint')} />
           {refreshButton}
-          <Button label={t('certAdd')} disabled={locked || unknownCreate} onPress={() => edit()} />
+          <Button
+            label={t('certAdd')}
+            disabled={locked || unknownCreate}
+            onPress={() => openCertificate()}
+          />
           {!visible && <ErrorBox error={write.error} />}
           <ErrorBox error={remote.data ? remote.error : undefined} />
           {!visible && unknownCreate && <Txt muted>{t('certUnknownCreate')}</Txt>}
@@ -346,22 +355,29 @@ export function CertificatesScreen() {
                   }
                 />
                 {!!item.reason && <Info label={t('certReason')} value={item.reason} />}
+                <Info label={t('certCredential')} value={item.credential} />
                 <Info label={t('certIssueDate')} value={item.issuedDate} />
                 <Info label={t('certExpiryDate')} value={item.expiryDate} />
-                <Button
-                  kind="secondary"
-                  label={`${t('certEdit')}: ${item.name}`}
-                  disabled={locked}
-                  onPress={() => edit(item)}
-                />
-                <Button
-                  kind="danger"
-                  label={`${t('certDelete')}: ${item.name}`}
-                  disabled={locked}
-                  onPress={() => {
-                    removeCertificate(item);
-                  }}
-                />
+                <View style={styles.pairedActions}>
+                  <Button
+                    kind="secondary"
+                    label={t('certView')}
+                    accessibilityLabel={`${t('certView')}: ${item.name}`}
+                    style={styles.pairedButton}
+                    disabled={locked}
+                    onPress={() => openCertificate(item)}
+                  />
+                  <Button
+                    kind="danger"
+                    label={t('remove')}
+                    accessibilityLabel={`${t('certDelete')}: ${item.name}`}
+                    style={styles.pairedButton}
+                    disabled={locked}
+                    onPress={() => {
+                      removeCertificate(item);
+                    }}
+                  />
+                </View>
               </Card>
             ))}
           </RemoteState>
@@ -386,7 +402,7 @@ export function CertificatesScreen() {
                 <Card style={styles.form}>
                   <Row>
                     <Txt accessibilityRole="header" style={styles.formTitle}>
-                      {t(existing ? 'certEditTitle' : 'certAdd')}
+                      {t(existing ? 'certDetailsTitle' : 'certAdd')}
                     </Txt>
                     <IconButton
                       label={t('certClose')}
@@ -397,8 +413,8 @@ export function CertificatesScreen() {
                       }}
                     />
                   </Row>
-                  <Txt muted>{t('certFormDescription')}</Txt>
-                  {submitted && (!validCertificate(draft) || (!existing && !file)) && (
+                  {!existing && <Txt muted>{t('certFormDescription')}</Txt>}
+                  {submitted && !existing && (!validCertificate(draft) || !file) && (
                     <Txt
                       accessibilityRole="alert"
                       accessibilityLiveRegion="polite"
@@ -408,53 +424,68 @@ export function CertificatesScreen() {
                     </Txt>
                   )}
                   {existing && (
-                    <>
-                      <Badge status={existing.status} />
-                      {!!existing.reason && <Txt>{existing.reason}</Txt>}
-                    </>
+                    <View style={styles.savedFiles}>
+                      <Txt accessibilityRole="header" style={styles.heading}>
+                        {t('certFiles')}
+                      </Txt>
+                      <ErrorBox error={media.error} retry={reloadMedia} />
+                      {media.loading && <ActivityIndicator color={colors.primary} />}
+                      {!media.loading && !media.error && media.data?.length === 0 && (
+                        <Txt muted>{t('certFilesEmpty')}</Txt>
+                      )}
+                      {!media.loading &&
+                        !media.error &&
+                        media.data?.map((item) => (
+                          <Card key={item.id}>
+                            <Txt>{item.name || t('certFileFallback')}</Txt>
+                            <View style={styles.pairedActions}>
+                              <Button
+                                kind="secondary"
+                                label={t(previewId === item.id ? 'certHidePreview' : 'viewFile')}
+                                accessibilityLabel={`${t(previewId === item.id ? 'certHidePreview' : 'viewFile')}: ${item.name || t('certFileFallback')}`}
+                                style={styles.pairedButton}
+                                disabled={busy}
+                                onPress={() => setPreviewId(previewId === item.id ? '' : item.id)}
+                              />
+                              <Button
+                                kind="danger"
+                                label={t('remove')}
+                                accessibilityLabel={`${t('certDeleteFile')}: ${item.name || t('certFileFallback')}`}
+                                style={styles.pairedButton}
+                                disabled={locked || fileReview}
+                                onPress={() => {
+                                  removeFile(item);
+                                }}
+                              />
+                            </View>
+                            {previewId === item.id && (
+                              <CertificatePreview
+                                key={item.url}
+                                file={item}
+                                onReload={reloadMedia}
+                              />
+                            )}
+                          </Card>
+                        ))}
+                    </View>
                   )}
                   <View style={styles.fileSection}>
-                    <View style={styles.fileHeading}>
-                      <Feather
-                        name="upload-cloud"
-                        size={24}
-                        color={colors.primary}
-                        accessible={false}
-                      />
-                      <Txt accessibilityRole="header" style={styles.heading}>
-                        {t(existing ? 'certFiles' : 'certFileRequired')}
-                      </Txt>
-                    </View>
-                    <Txt muted>{t('certFileHint')}</Txt>
-                    <ErrorBox error={media.error} />
-                    {media.loading && <ActivityIndicator color={colors.primary} />}
-                    {media.data?.map((item) => (
-                      <Card key={item.id}>
-                        <Txt>{item.name || t('certFileFallback')}</Txt>
-                        <Button
-                          kind="secondary"
-                          label={`${t('viewFile')}: ${item.name || t('certFileFallback')}`}
-                          disabled={
-                            !item.url.startsWith('https://') ||
-                            (!!item.expiresAt && Date.parse(item.expiresAt) <= Date.now()) ||
-                            busy
-                          }
-                          onPress={() => {
-                            Linking.openURL(item.url).catch(() =>
-                              setFileError(t('certOpenFailed')),
-                            );
-                          }}
-                        />
-                        <Button
-                          kind="danger"
-                          label={`${t('certDeleteFile')}: ${item.name || t('certFileFallback')}`}
-                          disabled={locked || fileReview}
-                          onPress={() => {
-                            removeFile(item);
-                          }}
-                        />
-                      </Card>
-                    ))}
+                    {!existing && (
+                      <>
+                        <View style={styles.fileHeading}>
+                          <Feather
+                            name="upload-cloud"
+                            size={24}
+                            color={colors.primary}
+                            accessible={false}
+                          />
+                          <Txt accessibilityRole="header" style={styles.heading}>
+                            {t('certFileRequired')}
+                          </Txt>
+                        </View>
+                        <Txt muted>{t('certFileHint')}</Txt>
+                      </>
+                    )}
                     {file && (
                       <Card style={styles.selectedFile}>
                         <View style={styles.fileHeading}>
@@ -520,25 +551,31 @@ export function CertificatesScreen() {
                       </Txt>
                     )}
                   </View>
-                  <CertificateFields
-                    draft={draft}
-                    disabled={formLocked}
-                    errors={visibleErrors}
-                    onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
-                    onBlur={(key) => setTouched((current) => ({ ...current, [key]: true }))}
-                    onPickDate={chooseDate}
-                  />
+                  {!existing && (
+                    <CertificateFields
+                      draft={draft}
+                      disabled={formLocked}
+                      errors={visibleErrors}
+                      onChange={(key, value) =>
+                        setDraft((current) => ({ ...current, [key]: value }))
+                      }
+                      onBlur={(key) => setTouched((current) => ({ ...current, [key]: true }))}
+                      onPickDate={chooseDate}
+                    />
+                  )}
                   {!!dateError && (
                     <Txt accessibilityLiveRegion="polite" style={styles.error}>
                       {dateError}
                     </Txt>
                   )}
-                  <View style={styles.reviewHint}>
-                    <Feather name="info" size={20} color={colors.primary} accessible={false} />
-                    <Txt muted style={styles.fill}>
-                      {t('certReviewHint')}
-                    </Txt>
-                  </View>
+                  {!existing && (
+                    <View style={styles.reviewHint}>
+                      <Feather name="info" size={20} color={colors.primary} accessible={false} />
+                      <Txt muted style={styles.fill}>
+                        {t('certReviewHint')}
+                      </Txt>
+                    </View>
+                  )}
                   <ErrorBox error={write.error} />
                   <ErrorBox error={remote.error} />
                   {unknownCreate && (
@@ -551,22 +588,24 @@ export function CertificatesScreen() {
                   <View style={styles.actions}>
                     <View style={styles.action}>
                       <Button
-                        label={t('cancel')}
+                        label={t(existing ? 'close' : 'cancel')}
                         kind="secondary"
                         disabled={busy}
                         onPress={close}
                       />
                     </View>
-                    <View style={styles.action}>
-                      <Button
-                        label={t('certSave')}
-                        loading={write.busy}
-                        disabled={locked || fileReview || unknownCreate}
-                        onPress={() => {
-                          save();
-                        }}
-                      />
-                    </View>
+                    {(!existing || !!file) && (
+                      <View style={styles.action}>
+                        <Button
+                          label={t('certSave')}
+                          loading={write.busy}
+                          disabled={locked || fileReview || unknownCreate}
+                          onPress={() => {
+                            save();
+                          }}
+                        />
+                      </View>
+                    )}
                   </View>
                 </Card>
               </View>
@@ -591,6 +630,9 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  savedFiles: { gap: 12 },
+  pairedActions: { flexDirection: 'row', gap: 8 },
+  pairedButton: { flex: 1, minWidth: 0 },
   fileHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   selectedFile: { padding: 12, gap: 12 },
   fileName: { fontSize: 16, lineHeight: 24, fontWeight: '600' },

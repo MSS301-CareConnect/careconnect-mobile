@@ -134,14 +134,11 @@ async function openBoard(api: ApiClient) {
   await fireEvent.press(screen.getByRole('tab', { name: 'Đăng ký ca' }));
   return screen;
 }
-async function openShift(api: ApiClient) {
+async function openShift(api: ApiClient, view: 'open' | 'pending' = 'open') {
   const screen = await openBoard(api);
-  await screen.findAllByText('TEST SHIFT');
-  await fireEvent.press(
-    screen.queryByRole('button', { name: 'Đăng ký ca' }) ??
-      screen.queryByRole('button', { name: 'Xem chi tiết ca' }) ??
-      screen.getByRole('button', { name: /^Xem chi tiết ca, .*Đã đăng ký$/ }),
-  );
+  if (view === 'pending') await fireEvent.press(screen.getByRole('tab', { name: 'Chờ duyệt' }));
+  const name = view === 'pending' ? /^Xem chi tiết ca, .*Đang chờ trung tâm duyệt$/ : 'Đăng ký ca';
+  await fireEvent.press(await screen.findByRole('button', { name }));
   await screen.findByText('Test shift note');
   return screen;
 }
@@ -164,14 +161,17 @@ test.each(['Xem chi tiết ca', 'Đăng ký ca'])(
   },
 );
 
-test('an already registered open shift opens from its card without a nested detail button', async () => {
+test('an already registered shift moves from Open to Pending and opens from its card', async () => {
   const f = fixture({ status: 'PENDING' });
   const screen = await openBoard(f.api);
   try {
-    const card = await screen.findByRole('button', {
-      name: /^Xem chi tiết ca, .*13:00–17:04, Đã đăng ký$/,
-    });
+    await screen.findByText('Hiện chưa có ca nào đang mở');
+    expect(screen.queryByText('TEST SHIFT')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Đăng ký ca' })).toBeNull();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Chờ duyệt' }));
+    const card = await screen.findByRole('button', {
+      name: /^Xem chi tiết ca, .*13:00–17:04, Đang chờ trung tâm duyệt$/,
+    });
     expect(screen.queryByRole('button', { name: 'Xem chi tiết ca' })).toBeNull();
     await fireEvent.press(card);
     await screen.findByRole('button', { name: 'Hủy đăng ký' });
@@ -189,7 +189,7 @@ test('registering sends a note, remains pending, and cancellation needs confirma
       await screen.findByLabelText('Ghi chú đăng ký (không bắt buộc)'),
       'Test registration note',
     );
-    await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký cho trung tâm' }));
     await screen.findByText('Đang chờ trung tâm duyệt');
     expect(screen.queryByLabelText('Ghi chú đăng ký (không bắt buộc)')).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Hủy đăng ký' }));
@@ -197,7 +197,7 @@ test('registering sends a note, remains pending, and cancellation needs confirma
     await fireEvent.press(screen.getByRole('button', { name: 'Xác nhận hủy đăng ký' }));
     await screen.findByText('Đã hủy đăng ký');
     expect(f.counts()).toEqual({ posts: 1, deletes: 1 });
-    expect(await screen.findByRole('button', { name: 'Gửi đăng ký' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Gửi đăng ký cho trung tâm' })).toBeTruthy();
   } finally {
     await screen.unmount();
   }
@@ -213,14 +213,15 @@ test.each(['network', 'response'])(
         await screen.findByLabelText('Ghi chú đăng ký (không bắt buộc)'),
         'Keep this note',
       );
-      await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký cho trung tâm' }));
       await screen.findByText(/Chưa xác định được kết quả/);
       expect(screen.getByDisplayValue('Keep this note')).toBeTruthy();
-      await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký' }));
+      expect(screen.getByRole('button', { name: 'Gửi đăng ký cho trung tâm' })).toBeDisabled();
+      await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký cho trung tâm' }));
       expect(f.counts().posts).toBe(1);
       await fireEvent.press(screen.getByRole('button', { name: 'Tải lại trạng thái' }));
       await screen.findByText('Đang chờ trung tâm duyệt');
-      expect(screen.queryByRole('button', { name: 'Gửi đăng ký' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Gửi đăng ký cho trung tâm' })).toBeNull();
     } finally {
       await screen.unmount();
     }
@@ -243,7 +244,7 @@ test('approved registration is read-only and reachable from my registrations', a
     expect(screen.getByText('Test registration note')).toBeTruthy();
     expect(screen.getByText('Test rejection reason')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Hủy đăng ký' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Gửi đăng ký' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gửi đăng ký cho trung tâm' })).toBeNull();
     expect(f.counts()).toEqual({ posts: 0, deletes: 0 });
   } finally {
     await screen.unmount();
@@ -254,11 +255,14 @@ test.each([{ eligible: false }, { centerActive: false }])(
   'inactive caregiver or center blocks registration: %s',
   async (options) => {
     const f = fixture(options);
-    const screen = await openShift(f.api);
+    const screen = await openBoard(f.api);
     try {
-      await screen.findByText('Hồ sơ cần được xác minh và đang hoạt động để đăng ký ca.');
-      expect(screen.getByRole('button', { name: 'Gửi đăng ký' })).toBeDisabled();
-      await fireEvent.press(screen.getByRole('button', { name: 'Gửi đăng ký' }));
+      const register = await screen.findByRole('button', { name: 'Đăng ký ca' });
+      expect(register).toBeDisabled();
+      await fireEvent.press(await screen.findByRole('button', { name: 'Xem chi tiết ca' }));
+      const submit = await screen.findByRole('button', { name: 'Gửi đăng ký cho trung tâm' });
+      expect(submit).toBeDisabled();
+      await fireEvent.press(submit);
       expect(f.counts().posts).toBe(0);
     } finally {
       await screen.unmount();
@@ -268,11 +272,11 @@ test.each([{ eligible: false }, { centerActive: false }])(
 
 test('a concurrent approval prevents cancellation and refresh reconciles the approved state', async () => {
   const f = fixture({ status: 'PENDING', cancelConflict: true });
-  const screen = await openShift(f.api);
+  const screen = await openShift(f.api, 'pending');
   try {
     await fireEvent.press(screen.getByRole('button', { name: 'Hủy đăng ký' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Xác nhận hủy đăng ký' }));
-    await screen.findByText('Chỉ đăng ký đang chờ duyệt mới được hủy. Hãy tải lại trạng thái.');
+    await screen.findByText(/^Chỉ đăng ký đang chờ duyệt mới được hủy\. Hãy tải lại trạng thái\./);
     await fireEvent.press(screen.getByRole('button', { name: 'Xác nhận hủy đăng ký' }));
     expect(f.counts().deletes).toBe(1);
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại trạng thái' }));
@@ -288,7 +292,7 @@ test('my pending registration can still be cancelled when its shift is unavailab
   const f = fixture({ status: 'PENDING', shiftUnavailable: true });
   const screen = await openBoard(f.api);
   try {
-    await fireEvent.press(screen.getByRole('tab', { name: 'Chờ duyệt' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Lịch sử' }));
     await screen.findByText('Đang chờ trung tâm duyệt');
     await fireEvent.press(
       screen.getByRole('button', {
@@ -299,7 +303,7 @@ test('my pending registration can still be cancelled when its shift is unavailab
     await fireEvent.press(screen.getByRole('button', { name: 'Hủy đăng ký' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Xác nhận hủy đăng ký' }));
     await screen.findByText('Đã hủy đăng ký');
-    expect(screen.queryByRole('button', { name: 'Gửi đăng ký' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gửi đăng ký cho trung tâm' })).toBeNull();
     expect(f.counts()).toEqual({ posts: 0, deletes: 1 });
   } finally {
     await screen.unmount();
@@ -310,10 +314,12 @@ test('four primary tabs keep registration and day agenda inside work schedule, s
   const f = fixture();
   const screen = await render(<App client={f.api} />);
   try {
+    await screen.findByRole('tab', { name: /Buổi được giao/ });
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
     await fireEvent.press(await screen.findByRole('tab', { name: /Buổi được giao/ }));
     expect(screen.queryByRole('button', { name: 'Đăng ký ca làm việc' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Lịch được trung tâm phân công' })).toBeNull();
-    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    expect(screen.getByRole('tab', { name: 'Cần phản hồi' })).toBeTruthy();
     await fireEvent.press(screen.getByRole('tab', { name: /Lịch làm việc/ }));
     await fireEvent.press(screen.getByRole('tab', { name: 'Đăng ký ca' }));
     await screen.findByText('TEST SHIFT');
@@ -359,7 +365,7 @@ test('visit filter drafts apply together and completed history remains accessibl
         ),
       ).toBe(true),
     );
-    await fireEvent.press(screen.getByRole('button', { name: 'Lịch sử' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Lịch sử' }));
     await waitFor(() => {
       const request = f.requests.filter((r) => r.path === '/booking-occurrences').at(-1);
       expect(request?.query).toContain('status=COMPLETED');

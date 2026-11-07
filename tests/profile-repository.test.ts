@@ -50,14 +50,20 @@ test('certificate creation checkpoints the server ID before upload failure and d
   expect(checkpoint?.id).toBe('certificate');
   expect(checkpoint?.version).toBe(4);
   fail = false;
-  await repo.saveCertificateWithFile('caregiver', draft, checkpoint, file, () => undefined);
+  await repo.saveCertificateWithFile(
+    'caregiver',
+    { ...draft, name: 'Ignored metadata change' },
+    checkpoint,
+    file,
+    () => undefined,
+  );
   expect(calls.filter((call) => call.path.startsWith('/certificates/'))).toHaveLength(1);
   expect(
     calls.filter((call) => call.path === '/provider-media/CERTIFICATE/certificate'),
   ).toHaveLength(2);
 });
 
-test('certificate update and delete preserve actual version; malformed write response is uncertain', async () => {
+test('certificate creation treats malformed responses as uncertain and deletion sends the actual version', async () => {
   const calls: { method: string; path: string; body: unknown; query: unknown }[] = [];
   const repo = new ProfileRepository({
     request: async (method, path, body, query) => {
@@ -76,13 +82,12 @@ test('certificate update and delete preserve actual version; malformed write res
     status: 'VERIFIED',
     reason: '',
   };
-  await expect(repo.saveCertificate('caregiver', cert, cert)).rejects.toMatchObject({
+  await expect(repo.createCertificate('caregiver', cert)).rejects.toMatchObject({
     uncertain: true,
   });
   expect(calls[0]).toMatchObject({
-    method: 'PUT',
-    path: '/certificates/certificate',
-    body: { version: 9 },
+    method: 'POST',
+    path: '/certificates/caregivers/caregiver',
   });
   await repo.deleteCertificate(cert);
   expect(calls[1]).toMatchObject({ method: 'DELETE', query: { version: 9 } });

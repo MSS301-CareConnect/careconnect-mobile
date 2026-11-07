@@ -98,7 +98,11 @@ function Tabs() {
         ),
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: t('today') }} />
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{ title: t('today'), tabBarButtonTestID: 'home-tab' }}
+      />
       <Tab.Screen
         name="Schedule"
         component={VisitsScreen}

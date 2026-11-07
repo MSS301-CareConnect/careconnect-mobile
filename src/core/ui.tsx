@@ -192,6 +192,8 @@ export function Section({
 }
 export function Button({
   label,
+  accessibilityLabel = label,
+  style,
   onPress,
   disabled = false,
   loading = false,
@@ -199,6 +201,8 @@ export function Button({
   icon,
 }: {
   label: string;
+  accessibilityLabel?: string;
+  style?: StyleProp<ViewStyle>;
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
@@ -210,13 +214,14 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: disabled || loading, busy: loading }}
       disabled={disabled || loading}
       onPress={onPress}
       style={({ pressed }) => [
         s.button,
         kind === 'primary' ? s.primary : kind === 'danger' ? s.dangerButton : s.secondary,
+        style,
         (disabled || loading) && s.disabled,
         pressed && { opacity: 0.75 },
       ]}

@@ -327,7 +327,7 @@ test('confirmed submission saves and uploads selected photos before submitting',
       ?.find((b) => b.text === 'Gửi báo cáo cho người thân');
     expect(button).toBeTruthy();
     await act(async () => button?.onPress?.());
-    await screen.findByText('Báo cáo đã gửi');
+    await screen.findByText('Báo cáo đã được nộp và chỉ có thể xem.');
     expect(f.events).toEqual(['save', 'upload', 'submit']);
     expect(screen.queryByRole('button', { name: 'Thêm ảnh' })).toBeNull();
   } finally {

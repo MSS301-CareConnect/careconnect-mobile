@@ -65,28 +65,17 @@ export class ProfileRepository {
   async removeMedia(type: 'CAREGIVER_PROFILE' | 'CERTIFICATE', id: string, mediaId: string) {
     return this.api.request('DELETE', `/provider-media/${type}/${id}/${mediaId}`);
   }
-  async saveCertificate(caregiverId: string, value: CertificateDraft, existing?: Certificate) {
-    if (
-      !validCertificate(value) ||
-      (existing && (!Number.isSafeInteger(existing.version) || existing.version < 0))
-    )
-      throw new Error('Invalid certificate');
-    const result = await this.api.request(
-      existing ? 'PUT' : 'POST',
-      existing ? `/certificates/${existing.id}` : `/certificates/caregivers/${caregiverId}`,
-      {
-        certificateName: value.name.trim(),
-        issuedBy: value.issuedBy.trim(),
-        credentialNumber: value.credential.trim() || null,
-        issuedDate: value.issuedDate || null,
-        expiryDate: value.expiryDate || null,
-        ...(existing ? { version: existing.version } : {}),
-      },
-    );
+  async createCertificate(caregiverId: string, value: CertificateDraft) {
+    if (!validCertificate(value)) throw new Error('Invalid certificate');
+    const result = await this.api.request('POST', `/certificates/caregivers/${caregiverId}`, {
+      certificateName: value.name.trim(),
+      issuedBy: value.issuedBy.trim(),
+      credentialNumber: value.credential.trim() || null,
+      issuedDate: value.issuedDate || null,
+      expiryDate: value.expiryDate || null,
+    });
     try {
-      const saved = parseCertificate(result);
-      if (existing && saved.id !== existing.id) throw new Error('Mismatched certificate');
-      return saved;
+      return parseCertificate(result);
     } catch {
       throw new ApiError(0, 0, true);
     }
@@ -102,24 +91,14 @@ export class ProfileRepository {
     caregiverId: string,
     draft: CertificateDraft,
     existing: Certificate | undefined,
-    file: PickedDocument | undefined,
+    file: PickedDocument,
     checkpoint: (value: Certificate, uploaded: boolean) => void,
   ) {
-    if (!validCertificate(draft)) throw new Error('Invalid certificate');
-    if (file) validateProfileFile(file, 'certificate');
-    const same =
-      existing &&
-      existing.name === draft.name.trim() &&
-      existing.issuedBy === draft.issuedBy.trim() &&
-      existing.credential === draft.credential.trim() &&
-      existing.issuedDate === draft.issuedDate &&
-      existing.expiryDate === draft.expiryDate;
-    const saved = same ? existing : await this.saveCertificate(caregiverId, draft, existing);
+    validateProfileFile(file, 'certificate');
+    const saved = existing ?? (await this.createCertificate(caregiverId, draft));
     checkpoint(saved, false);
-    if (file) {
-      await this.uploadMedia('CERTIFICATE', saved.id, file);
-      checkpoint(saved, true);
-    }
+    await this.uploadMedia('CERTIFICATE', saved.id, file);
+    checkpoint(saved, true);
     return saved;
   }
   async sessions() {

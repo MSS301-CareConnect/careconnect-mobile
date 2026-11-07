@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Text } from 'react-native';
+import { Alert, Linking, NativeModules, Text } from 'react-native';
 import { expect, jest, test } from '@jest/globals';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -22,6 +22,16 @@ const serverCertificate = {
   verificationReason: 'Please provide a clearer document',
   version: 7,
 };
+const serverFile = {
+  mediaFileId: 'file',
+  originalFileName: 'qualification.pdf',
+  mediaFileType: 'DOCUMENT',
+  contentType: 'application/pdf',
+  fileSize: 1024,
+  displayOrder: 0,
+  downloadUrl: 'https://files.example.test/cert',
+  downloadUrlExpiresAt: '2030-01-01T00:00:00Z',
+};
 function SignedIn({ children }: { children: React.ReactNode }) {
   return useApp().user ? <>{children}</> : <Text>Restoring</Text>;
 }
@@ -29,7 +39,7 @@ function fixture(
   options: {
     uploadFailure?: 'network' | 'denied';
     createFailure?: boolean;
-    updateFailure?: boolean;
+    files?: (typeof serverFile)[];
     gate?: Promise<void>;
     certificateStatus?: string;
   } = {},
@@ -70,38 +80,26 @@ function fixture(
       else if (path === '/certificates/caregivers/caregiver' && method === 'GET') {
         if (controls.failRead) return new Response(JSON.stringify({ code: 503 }), { status: 503 });
         result = certificates;
-      } else if (path.startsWith('/provider-media/CERTIFICATE/') && method === 'GET') result = [];
+      } else if (path.startsWith('/provider-media/CERTIFICATE/') && method === 'GET')
+        result = options.files ?? [];
       else if (path.startsWith('/provider-media/CERTIFICATE/') && method === 'POST') {
         if (controls.uploadFailure === 'network') throw new TypeError('Upload interrupted');
         if (controls.uploadFailure === 'denied')
           return new Response(JSON.stringify({ code: 403 }), { status: 403 });
-        result = [
-          {
-            mediaFileId: 'file',
-            originalFileName: 'qualification.pdf',
-            mediaFileType: 'DOCUMENT',
-            contentType: 'application/pdf',
-            fileSize: 1024,
-            displayOrder: 0,
-            downloadUrl: 'https://files.example.test/cert',
-            downloadUrlExpiresAt: '2030-01-01T00:00:00Z',
-          },
-        ];
-      } else if (path.startsWith('/certificates/') && (method === 'POST' || method === 'PUT')) {
+        result = [serverFile];
+      } else if (path.startsWith('/certificates/') && method === 'POST') {
         await options.gate;
         if (options.createFailure && method === 'POST') throw new TypeError('Create interrupted');
         const fields = body as Record<string, unknown>;
         const saved = {
           ...serverCertificate,
           ...fields,
-          id: method === 'POST' ? 'cert-new' : 'cert-existing',
+          id: 'cert-new',
           verificationStatus: 'PENDING',
           verificationReason: '',
-          version: method === 'POST' ? 0 : 8,
+          version: 0,
         };
         certificates = [...certificates.filter((item) => item.id !== saved.id), saved];
-        if (options.updateFailure && method === 'PUT')
-          throw new TypeError('Update interrupted after commit');
         result = saved;
       } else if (path.startsWith('/certificates/') && method === 'DELETE') {
         certificates = certificates.filter((item) => item.id !== path.split('/').at(-1));
@@ -183,13 +181,14 @@ test('an explicit save creates once and reuses its checkpoint ID after a definit
     await selectFile(screen);
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu chứng chỉ' }));
     await screen.findByText(/Bạn không có quyền truy cập/);
-    expect(screen.getByDisplayValue('New certificate')).toBeTruthy();
+    expect(screen.getByText('Chi tiết chứng chỉ')).toBeTruthy();
+    expect(screen.queryByLabelText('Tên chứng chỉ *')).toBeNull();
     expect(
       f.writes().filter((call) => call.path === '/certificates/caregivers/caregiver'),
     ).toHaveLength(1);
     f.controls.uploadFailure = undefined;
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu chứng chỉ' }));
-    await waitFor(() => expect(screen.queryByDisplayValue('New certificate')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Lưu chứng chỉ' })).toBeNull());
     expect(
       f.writes().filter((call) => call.path === '/certificates/caregivers/caregiver'),
     ).toHaveLength(1);
@@ -337,68 +336,61 @@ test('invalid certificate files make no writes and equal issue/expiry dates rema
   }
 });
 
-test('successful metadata save followed by failed refresh cannot expose a stale delete version', async () => {
-  const f = fixture();
-  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+test('saved certificate details are read only and open PDF pages inside the app', async () => {
+  const originalModule = NativeModules.CareConnectCertificatePdf;
+  const pdf = {
+    open: jest.fn(async (_url: string) => ({ id: 4, pages: 2 })),
+    render: jest.fn(async (_id: number, index: number) => `data:image/jpeg;base64,page${index}`),
+    close: jest.fn(),
+  };
+  NativeModules.CareConnectCertificatePdf = pdf;
+  const external = jest.spyOn(Linking, 'openURL');
+  const f = fixture({ files: [serverFile] });
   const screen = await open(f);
   try {
+    expect(screen.queryByRole('button', { name: 'Sửa chứng chỉ: Server certificate' })).toBeNull();
     await fireEvent.press(
-      screen.getByRole('button', { name: 'Sửa chứng chỉ: Server certificate' }),
+      screen.getByRole('button', { name: 'Xem chứng chỉ: Server certificate' }),
     );
-    await fireEvent.changeText(screen.getByLabelText('Tên chứng chỉ *'), 'Edited certificate');
-    f.controls.failRead = true;
-    await fireEvent.press(screen.getByRole('button', { name: 'Lưu chứng chỉ' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Tải lại chứng chỉ' })).toBeEnabled(),
+    expect(screen.queryByText('ABC')).toBeNull();
+    expect(screen.queryByLabelText('Tên chứng chỉ *')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lưu chứng chỉ' })).toBeNull();
+    await fireEvent.press(
+      await screen.findByRole('button', { name: 'Xem tài liệu: qualification.pdf' }),
     );
-    expect(screen.getByRole('button', { name: 'Lưu chứng chỉ' })).toBeDisabled();
+    await screen.findByLabelText('qualification.pdf');
+    expect(pdf.open).toHaveBeenCalledWith(serverFile.downloadUrl);
+    expect(pdf.render).toHaveBeenCalledWith(4, 0);
+    await fireEvent.press(screen.getByRole('button', { name: 'Trang sau' }));
+    await waitFor(() => expect(pdf.render).toHaveBeenCalledWith(4, 1));
     await fireEvent.press(screen.getByRole('button', { name: 'Đóng biểu mẫu chứng chỉ' }));
-    expect(
-      screen.getByRole('button', { name: 'Xóa chứng chỉ: Server certificate' }),
-    ).toBeDisabled();
-    f.controls.failRead = false;
-    await fireEvent.press(screen.getByRole('button', { name: 'Tải lại chứng chỉ' }));
-    await screen.findByRole('button', { name: 'Xóa chứng chỉ: Edited certificate' });
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'Xóa chứng chỉ: Edited certificate' }),
-    );
-    await yes(alert);
-    await waitFor(() =>
-      expect(f.writes().filter((call) => call.method === 'DELETE')).toHaveLength(1),
-    );
-    expect(
-      f
-        .writes()
-        .find((call) => call.method === 'DELETE')
-        ?.query.get('version'),
-    ).toBe('8');
+    expect(pdf.close).toHaveBeenCalledWith(4);
+    expect(external).not.toHaveBeenCalled();
+    expect(f.writes()).toHaveLength(0);
   } finally {
-    alert.mockRestore();
     await screen.unmount();
+    NativeModules.CareConnectCertificatePdf = originalModule;
+    external.mockRestore();
   }
 });
 
-test('an uncertain metadata update does not label an unattempted file upload uncertain', async () => {
-  const f = fixture({ updateFailure: true });
+test('saved certificate supports an attachment upload without updating its metadata', async () => {
+  const f = fixture();
   const screen = await open(f);
   try {
     await fireEvent.press(
-      screen.getByRole('button', { name: 'Sửa chứng chỉ: Server certificate' }),
+      screen.getByRole('button', { name: 'Xem chứng chỉ: Server certificate' }),
     );
-    await fireEvent.changeText(screen.getByLabelText('Tên chứng chỉ *'), 'Edited certificate');
+    await screen.findByText('Chưa có tệp minh chứng.');
     await selectFile(screen);
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu chứng chỉ' }));
-    await screen.findByText(/Chưa xác định được kết quả/);
-    expect(f.writes().some((call) => call.path.startsWith('/provider-media/'))).toBe(false);
-    await fireEvent.press(screen.getByRole('button', { name: 'Tải lại chứng chỉ' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Lưu chứng chỉ' })).toBeEnabled(),
-    );
-    expect(screen.queryByText(/Kiểm tra các tệp trên máy chủ/)).toBeNull();
-    await fireEvent.press(screen.getByRole('button', { name: 'Lưu chứng chỉ' }));
-    await waitFor(() => expect(screen.queryByDisplayValue('Edited certificate')).toBeNull());
-    expect(f.writes().filter((call) => call.method === 'PUT')).toHaveLength(1);
-    expect(f.writes().filter((call) => call.path.startsWith('/provider-media/'))).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Lưu chứng chỉ' })).toBeNull());
+    expect(f.writes()).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        path: '/provider-media/CERTIFICATE/cert-existing',
+      }),
+    ]);
   } finally {
     await screen.unmount();
   }

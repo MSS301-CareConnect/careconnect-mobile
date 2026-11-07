@@ -72,13 +72,15 @@ test('today section opens the assigned visits screen through View all', async ()
   const f = fixture();
   const screen = await render(<App client={f.api} />);
   try {
-    await screen.findByText('Lịch chăm sóc hôm nay');
+    await screen.findByText('Sắp bắt đầu');
     await fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả' }));
     expect(await screen.findByRole('button', { name: 'Bộ lọc buổi chăm sóc' })).toBeTruthy();
     expect(await screen.findByText('Test first recipient')).toBeTruthy();
     await waitFor(() => {
       const query = f.requests
-        .filter((request) => request.path === '/booking-occurrences')
+        .filter(
+          (request) => request.path === '/booking-occurrences' && !request.query.has('status'),
+        )
         .at(-1)?.query;
       expect(query?.get('from')).toBe(vietnamDay());
       expect(query?.get('to')).toBe(vietnamDay());
@@ -89,18 +91,18 @@ test('today section opens the assigned visits screen through View all', async ()
   }
 });
 
-test('requests remain reachable from assigned visits without loading a request count on Home', async () => {
+test('Home reads the request count and the response tab loads the full request list', async () => {
   const f = fixture();
   const screen = await render(<App client={f.api} />);
   try {
     await screen.findByText('Test first recipient');
-    expect(f.requests.some((request) => request.path === '/bookings/caregiver-requests')).toBe(
-      false,
-    );
+    const requestReads = () =>
+      f.requests.filter((request) => request.path === '/bookings/caregiver-requests');
+    expect(requestReads().map((request) => request.query.get('size'))).toEqual(['1']);
     await fireEvent.press(screen.getByRole('tab', { name: /Buổi được giao/ }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Yêu cầu từ khách' }));
-    expect(await screen.findByText('Yêu cầu đặt lịch')).toBeTruthy();
-    expect(screen.getByText('Không có yêu cầu đang chờ trả lời.')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('tab', { name: /^Cần phản hồi/ }));
+    expect(await screen.findByText('Không có yêu cầu đang chờ trả lời.')).toBeTruthy();
+    expect(requestReads().some((request) => request.query.get('size') === '20')).toBe(true);
   } finally {
     await screen.unmount();
   }
@@ -111,18 +113,23 @@ test('View all resets previously selected history to the Vietnam day range', asy
   const screen = await render(<App client={f.api} />);
   try {
     await fireEvent.press(await screen.findByRole('tab', { name: /Buổi được giao/ }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Lịch sử' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Lịch sử' }));
     await waitFor(() => {
       const query = f.requests
-        .filter((request) => request.path === '/booking-occurrences')
+        .filter(
+          (request) =>
+            request.path === '/booking-occurrences' && request.query.get('status') !== 'SCHEDULED',
+        )
         .at(-1)?.query;
       expect(query?.get('status')).toBe('COMPLETED');
     });
-    await fireEvent.press(screen.getByRole('tab', { name: /Hôm nay/ }));
+    await fireEvent.press(screen.getByTestId('home-tab'));
     await fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả' }));
     await waitFor(() => {
       const query = f.requests
-        .filter((request) => request.path === '/booking-occurrences')
+        .filter(
+          (request) => request.path === '/booking-occurrences' && !request.query.has('status'),
+        )
         .at(-1)?.query;
       expect(query?.get('from')).toBe(vietnamDay());
       expect(query?.get('to')).toBe(vietnamDay());
