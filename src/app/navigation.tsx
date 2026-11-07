@@ -26,6 +26,7 @@ import { CertificatesScreen } from '../features/profile/certificates-screen';
 import { SecuritySessionsScreen } from '../features/profile/sessions-screen';
 import { useReducedMotion } from '../core/accessibility';
 import { WorkShiftScreen } from '../features/work-shifts/screens';
+import { RegisterShiftScreen } from '../features/work-shifts/board';
 import { WorkScheduleScreen } from '../features/availability/work-schedule-screen';
 import {
   NotificationBanner,
@@ -188,7 +189,7 @@ export function AppNavigator() {
               <Stack.Screen
                 name="Session"
                 component={SessionScreen}
-                options={{ title: t('activeCare') }}
+                options={{ title: t('careDetails') }}
               />
               <Stack.Screen
                 name="Report"
@@ -234,6 +235,11 @@ export function AppNavigator() {
                 name="ProviderSchedule"
                 component={ProviderScheduleScreen}
                 options={{ title: t('providerSchedule') }}
+              />
+              <Stack.Screen
+                name="RegisterShift"
+                component={RegisterShiftScreen}
+                options={{ title: t('workShiftRegisterAction') }}
               />
               <Stack.Screen
                 name="WorkShift"

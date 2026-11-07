@@ -156,11 +156,13 @@ Nếu lưu/upload báo chưa rõ kết quả, bấm **Tải lại trạng thái*
 ## 9. Kiểm thử đăng ký ca làm việc
 
 1. Trên FE, Admin duyệt hồ sơ caregiver đạt VERIFIED/ACTIVE; Manager cùng trung tâm tạo ca OPEN trong tương lai, còn chỗ.
-2. Mobile đăng nhập CAREGIVER, mở **Lịch làm việc → Đăng ký ca**. Màn hình có **Ca mở / Chờ duyệt / Đã duyệt / Lịch sử**; số lượng được đọc từ BE. Ca sắp tới có ngày/giờ chính, nút **Đăng ký ca** hoặc nhãn **Đã đăng ký**. Lịch sử giữ toàn bộ đăng ký và kết quả xử lý. Tab **Ca làm việc** riêng đã được gộp vào đây.
+2. Mobile đăng nhập CAREGIVER, mở **Lịch làm việc → Đăng ký ca**. **Ca mở** chỉ có ca OPEN trong tương lai mà bạn chưa có đăng ký PENDING/APPROVED, với nút **Đăng ký ca**. **Chờ duyệt / Đã duyệt** chỉ chứa đăng ký tương ứng chưa tới giờ bắt đầu. **Lịch sử** chứa ca đã qua, đăng ký bị từ chối hoặc đã hủy. Số đếm được tính theo cùng cách phân nhóm từ đầy đủ các trang BE. Ca trung tâm còn chỗ nhưng bạn đã đăng ký không hiện lại trong Ca mở. Tab **Ca làm việc** riêng đã được gộp vào đây.
 3. Kiểm tra giờ Việt Nam UTC+07, trung tâm, số người được duyệt và hạn đăng ký. Nhập ghi chú tối đa 2.000 ký tự rồi gửi. Kết quả phải là PENDING, chưa tạo lịch rảnh được duyệt và chưa phải booking chăm sóc.
 4. Khi PENDING, kiểm tra hủy với xác nhận và version hiện tại. Nếu Manager vừa duyệt, phải đọc lại trạng thái thay vì hủy lặp.
 5. Manager duyệt trên FE; mobile tải lại rồi chọn **Đã duyệt** để thấy APPROVED. Trong chi tiết đăng ký, **Rút ca đã duyệt** mở luồng hủy đúng khung rảnh liên kết. Khung giờ duyệt cũng xuất hiện ở **Lịch làm việc → Lịch theo ngày**. Booking chăm sóc nằm trong **Buổi được giao**, lịch sử ở **Buổi được giao → Lịch sử**. Bộ lọc chỉ áp dụng khi bấm **Áp dụng**.
 6. Thử ca đã bắt đầu, hết hạn, đủ người hoặc hồ sơ chưa xác minh: app giải thích, BE quyết định cuối. Lỗi mạng giữ ghi chú và yêu cầu đọc lại trạng thái trước lần gửi tiếp.
+
+Luồng gửi quản lý duyệt: **Lịch làm việc → Đăng ký ca → Ca mở → Đăng ký ca → nhập ghi chú → Gửi đăng ký cho trung tâm**. BE lưu PENDING; mobile hiện **Đang chờ quản lý trung tâm xét duyệt** và nút **Xem đăng ký chờ duyệt**. Center Manager cùng trung tâm mở danh sách đăng ký của ca trên FE để duyệt/từ chối; caregiver tải lại để xem kết quả. Ca chưa được trung tâm mở không thể đăng ký; mobile không tự tạo ca hoặc tự duyệt khung giờ.
 
 Jest dùng API giả có kiểm soát, không thay thế duyệt đăng ký thật trên FE/BE. Sửa JavaScript/TypeScript khi Metro chạy dùng Fast Refresh/Reload; đổi native code mới build/cài lại.
 

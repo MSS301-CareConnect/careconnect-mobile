@@ -1,4 +1,5 @@
 import { array, object, required, text } from '../../core/json';
+import { parseRecipientSnapshot, RecipientSnapshot } from './recipient-models';
 // Trạng thái buổi caregiver thấy (BookingService spec booking v1.0 §11.2); RESERVED / PENDING_ASSIGNMENT / EXPIRED chỉ có
 // trước khi khách thanh toán nên không có trong bộ lọc.
 export const statuses = [
@@ -21,6 +22,7 @@ export type Visit = {
   checkInClosesAt: string;
   status: string;
   name: string;
+  recipientId?: string;
   address: string;
   customerNote: string;
   phone: string;
@@ -31,11 +33,7 @@ export type Visit = {
   missedReason: string;
   services: string[];
   special: Detail[];
-  snapshot?: {
-    info: Detail[];
-    medications: { name: string; details: string }[];
-    emergency?: { name: string; phone: string };
-  };
+  snapshot?: RecipientSnapshot;
 };
 const specialKeys = [
   'allergies',
@@ -58,9 +56,6 @@ function instant(value: unknown, optional = false) {
 export function parseVisit(value: unknown): Visit {
   const j = object(value),
     snapshot = j.recipientSnapshot ? object(j.recipientSnapshot) : undefined;
-  const contact = snapshot?.primaryEmergencyContact
-    ? object(snapshot.primaryEmergencyContact)
-    : undefined;
   return {
     id: required(j.id),
     bookingId: required(j.bookingId),
@@ -71,6 +66,7 @@ export function parseVisit(value: unknown): Visit {
     checkInClosesAt: instant(j.checkInClosesAt, true),
     status: required(j.status),
     name: text(j.recipientName),
+    recipientId: text(j.recipientId),
     address: text(j.serviceAddress),
     customerNote: text(j.customerNote),
     phone: text(j.customerPhone),
@@ -81,37 +77,6 @@ export function parseVisit(value: unknown): Visit {
     missedReason: text(j.missedReason),
     services: array(j.services).map((v) => text(object(v).serviceName)),
     special: details(j.specialNotes ? object(j.specialNotes) : {}, specialKeys),
-    snapshot: snapshot
-      ? {
-          info: details(snapshot, [
-            'fullName',
-            'dateOfBirth',
-            'age',
-            'gender',
-            'bloodType',
-            'mobilityLevel',
-            'independenceLevel',
-            ...specialKeys,
-          ]),
-          medications: array(snapshot.activeMedications).map((v) => {
-            const m = object(v);
-            return {
-              name: text(m.medicationName),
-              details: [m.dosage, m.frequency, ...array(m.timeOfDay), m.route, m.usageNotes]
-                .map(text)
-                .filter(Boolean)
-                .join(' · '),
-            };
-          }),
-          emergency: contact
-            ? {
-                name: [text(contact.fullName), text(contact.relationship)]
-                  .filter(Boolean)
-                  .join(' · '),
-                phone: text(contact.phoneNumber),
-              }
-            : undefined,
-        }
-      : undefined,
+    snapshot: snapshot ? parseRecipientSnapshot(snapshot) : undefined,
   };
 }

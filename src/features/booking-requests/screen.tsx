@@ -1,5 +1,7 @@
+// @refresh reset
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { AppState, Modal, StyleSheet, View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Props } from '../../app/routes';
 import { ApiError } from '../../core/api';
@@ -29,7 +31,28 @@ import { BookingRequest, canAnswerRequest } from './models';
 import { BookingRequestRepository } from './repository';
 
 export function BookingRequestsScreen({ route }: Props<'BookingRequests'>) {
+  return (
+    <Screen>
+      <BookingRequestsContent bookingId={route.params?.bookingId} />
+    </Screen>
+  );
+}
+
+export function BookingRequestsContent({
+  bookingId,
+  embedded = false,
+  refreshKey = 0,
+  onChanged,
+  onLockedChange,
+}: {
+  bookingId?: string;
+  embedded?: boolean;
+  refreshKey?: number;
+  onChanged?: () => void;
+  onLockedChange?: (locked: boolean) => void;
+}) {
   const { api, t, locale } = useApp();
+  const focused = useIsFocused();
   const reducedMotion = useReducedMotion();
   const repo = useMemo(() => new BookingRequestRepository(api), [api]);
   const [p, setPage] = useState(0);
@@ -47,13 +70,32 @@ export function BookingRequestsScreen({ route }: Props<'BookingRequests'>) {
   const [readError, setReadError] = useState<unknown>();
   const load = useCallback(async () => {
     const result = await repo.list(p);
-    const id = route.params?.bookingId;
+    const id = bookingId;
     const linked =
       id && !result.items.some((item) => item.id === id) ? await repo.findPending(id) : undefined;
     return { ...result, linked };
-  }, [repo, p, route.params?.bookingId]);
+  }, [repo, p, bookingId]);
   const remote = useRemote(load);
+  const reloadRequests = remote.reload;
+  useEffect(() => {
+    if (refreshKey > 0) void reloadRequests();
+  }, [refreshKey, reloadRequests]);
   const write = useWrite();
+  const locked = write.busy || reading || write.uncertain || !!selected;
+  useEffect(() => {
+    onLockedChange?.(locked);
+  }, [onLockedChange, locked]);
+  useEffect(() => {
+    if (!focused || locked || remote.loading) return;
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void reloadRequests();
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [focused, locked, remote.loading, reloadRequests]);
+  useEffect(() => {
+    if (remote.data && p > 0 && p >= remote.data.totalPages)
+      setPage(Math.max(0, remote.data.totalPages - 1));
+  }, [remote.data, p]);
   useDirty(!!selected && selected.kind === 'decline' && !!reason, write.busy);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 15000);
@@ -92,6 +134,7 @@ export function BookingRequestsScreen({ route }: Props<'BookingRequests'>) {
         setTarget('');
       }
       await remote.reload();
+      onChanged?.();
     } catch (error) {
       setReadError(error);
     } finally {
@@ -118,6 +161,7 @@ export function BookingRequestsScreen({ route }: Props<'BookingRequests'>) {
         setReason('');
         setTarget('');
         await remote.reload();
+        onChanged?.();
       },
     );
   }
@@ -147,19 +191,36 @@ export function BookingRequestsScreen({ route }: Props<'BookingRequests'>) {
       )
     : [];
   return (
-    <Screen>
-      <PageHeader
-        title={t('bookingRequests')}
-        description={t('bookingRequestsHint')}
-        action={
+    <>
+      {embedded ? (
+        <Row>
+          <View style={styles.grow}>
+            <Txt accessibilityRole="header" style={styles.sectionTitle}>
+              {t('requestsFromCustomer')}
+            </Txt>
+            <Txt muted>{t('bookingRequestsHint')}</Txt>
+          </View>
           <IconButton
             label={t('requestRefreshList')}
             icon="refresh-cw"
-            disabled={remote.loading || reading || write.busy}
+            disabled={remote.loading || locked}
             onPress={reconcile}
           />
-        }
-      />
+        </Row>
+      ) : (
+        <PageHeader
+          title={t('requestsFromCustomer')}
+          description={t('bookingRequestsHint')}
+          action={
+            <IconButton
+              label={t('requestRefreshList')}
+              icon="refresh-cw"
+              disabled={remote.loading || reading || write.busy}
+              onPress={reconcile}
+            />
+          }
+        />
+      )}
       {!!message && (
         <Card>
           <Txt>{t(message)}</Txt>
@@ -181,6 +242,10 @@ export function BookingRequestsScreen({ route }: Props<'BookingRequests'>) {
                   <Badge status={request.status} />
                 </Row>
                 <Txt muted>{t(`requestKind${request.bookingType}`)}</Txt>
+                {!!request.recipientName && <Title>{request.recipientName}</Title>}
+                {!!request.customerName && (
+                  <Info label={t('requestCustomer')} value={request.customerName} />
+                )}
                 <Info
                   label={t('requestAnswerBy')}
                   value={formatInstant(request.acceptanceDueAt, locale)}
@@ -208,6 +273,13 @@ export function BookingRequestsScreen({ route }: Props<'BookingRequests'>) {
                   }
                 />
                 <Info label={t('customerNote')} value={request.customerNote} />
+                {!!request.allergies && (
+                  <View style={styles.allergies}>
+                    <Txt style={styles.error}>
+                      {t('requestAllergies')}: {request.allergies}
+                    </Txt>
+                  </View>
+                )}
                 {request.occurrences.length > 1 && (
                   <Button
                     kind="secondary"
@@ -336,7 +408,7 @@ export function BookingRequestsScreen({ route }: Props<'BookingRequests'>) {
           </SafeAreaView>
         </Modal>
       )}
-    </Screen>
+    </>
   );
 }
 const styles = StyleSheet.create({
@@ -344,4 +416,6 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   code: { fontWeight: '700' },
   error: { color: colors.danger },
+  allergies: { backgroundColor: colors.dangerBg, borderRadius: 12, padding: 12 },
+  sectionTitle: { fontSize: 18, lineHeight: 26, fontWeight: '700', marginBottom: 4 },
 });

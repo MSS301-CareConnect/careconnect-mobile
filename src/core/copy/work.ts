@@ -1,4 +1,27 @@
 export const workCopy: Record<string, readonly [string, string]> = {
+  workChooseShift: ['Chọn ca để đăng ký', 'Choose a shift to register'],
+  workChooseShiftHint: [
+    'Chọn ca do trung tâm mở, nhập ghi chú rồi gửi cho quản lý xét duyệt.',
+    'Choose a shift opened by your center, add a note and send it to your manager for review.',
+  ],
+  workPageRegisteredHint: [
+    'Bạn đã đăng ký các ca đang hiển thị trên trang này. Xem trang khác hoặc quay lại khi trung tâm mở ca mới.',
+    'You have already registered for the shifts on this page. Check another page or return when your center opens new shifts.',
+  ],
+  workSubmitRegistration: ['Gửi đăng ký cho trung tâm', 'Send registration to your center'],
+  workSubmitHint: [
+    'Đăng ký ca này sẽ được gửi cho quản lý trung tâm xét duyệt. Khung giờ chỉ trở thành lịch rảnh sau khi được duyệt.',
+    'Your center manager will review this registration. The time slot becomes available for bookings only after approval.',
+  ],
+  workPendingReviewHint: [
+    'Đã gửi đăng ký. Đang chờ quản lý trung tâm xét duyệt.',
+    'Registration sent. Waiting for your center manager to review.',
+  ],
+  workViewPending: ['Xem đăng ký chờ duyệt', 'View pending registrations'],
+  workRegistrationRefreshRequired: [
+    'Đã nhận kết quả gửi đăng ký, nhưng chưa tải lại được trạng thái mới nhất. Tải lại trước khi thao tác tiếp.',
+    'The registration result was received, but its latest status could not be refreshed. Refresh before another action.',
+  ],
   workScheduleTitle: ['Lịch làm việc', 'Work schedule'],
   workScheduleHint: [
     'Khung rảnh, buổi được giao và ngày nghỉ của bạn ở cùng một nơi.',
@@ -16,8 +39,8 @@ export const workCopy: Record<string, readonly [string, string]> = {
   workHistoryFilter: ['Lịch sử', 'History'],
   workOpenEmptyTitle: ['Hiện chưa có ca nào đang mở', 'No open shifts right now'],
   workOpenEmptyHint: [
-    'Trung tâm chưa mở ca mới. Hãy quay lại sau.',
-    'Your center has not opened new shifts. Check back later.',
+    'Không có ca mới để bạn đăng ký. Ca đã đăng ký nằm trong Chờ duyệt hoặc Đã duyệt; ca đã qua và các kết quả khác nằm trong Lịch sử.',
+    'There are no new shifts for you to register for. Your registrations are under Pending or Approved; past shifts and other outcomes are under History.',
   ],
   workFilteredEmptyHint: [
     'Không có ca phù hợp bộ lọc. Thử đổi ngày hoặc loại ca.',
@@ -35,8 +58,8 @@ export const workCopy: Record<string, readonly [string, string]> = {
   ],
   workHistoryEmptyTitle: ['Chưa có lịch sử đăng ký', 'No registration history'],
   workHistoryHint: [
-    'Toàn bộ đăng ký và kết quả xử lý của bạn.',
-    'All your registrations and their review outcomes.',
+    'Ca đã qua, đăng ký bị từ chối hoặc đã hủy.',
+    'Past shifts, rejected registrations and cancelled registrations.',
   ],
   workFilters: ['Bộ lọc ca', 'Shift filters'],
   workApply: ['Áp dụng', 'Apply'],
@@ -64,8 +87,8 @@ export const workCopy: Record<string, readonly [string, string]> = {
     'This shift overlaps your time off. Choose another shift or adjust your time off.',
   ],
   workShiftScheduleConflict: [
-    'Bạn đã có khung rảnh được duyệt trùng giờ.',
-    'You already have approved availability at this time.',
+    'Ca đăng ký bị trùng với khung giờ làm việc đã được duyệt của bạn. Vui lòng chọn ca khác.',
+    'This shift overlaps your approved working hours. Please choose another shift.',
   ],
   workShiftCenterInactive: [
     'Trung tâm hiện không hoạt động. Vui lòng liên hệ trung tâm.',
@@ -90,6 +113,16 @@ export const workCopy: Record<string, readonly [string, string]> = {
     'Declare when you are unavailable. Your center must reassign existing visits first.',
   ],
   timeOffAdd: ['Thêm ngày nghỉ', 'Add time off'],
+  timeOffPickStartDate: ['Chọn ngày bắt đầu', 'Choose start date'],
+  timeOffPickEndDate: ['Chọn ngày kết thúc', 'Choose end date'],
+  timeOffCalendarHint: [
+    'Bấm nút lịch để chọn ngày hoặc nhập YYYY-MM-DD.',
+    'Tap the calendar to choose a date or enter YYYY-MM-DD.',
+  ],
+  timeOffCalendarUnavailable: [
+    'Chưa mở được lịch. Bạn có thể nhập ngày theo YYYY-MM-DD.',
+    'The calendar could not open. You can enter the date as YYYY-MM-DD.',
+  ],
   timeOffEmpty: ['Chưa có ngày nghỉ sắp tới.', 'No upcoming time off.'],
   timeOffAllDay: ['Cả ngày', 'Whole days'],
   timeOffTimed: ['Chọn giờ', 'Specific hours'],

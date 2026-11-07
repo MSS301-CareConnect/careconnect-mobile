@@ -135,7 +135,7 @@ test.each([
   expect(() => parseWorkShift({ ...shift, ...times })).toThrow();
 });
 
-test('work-shift server filters preserve pagination and do not manufacture empty-page totals', async () => {
+test('work-shift filters scan server pages before paging caregiver-specific candidates', async () => {
   const request = jest.fn<ApiClient['request']>(async (_method, path) =>
     path === '/caregivers/me'
       ? {
@@ -146,7 +146,7 @@ test('work-shift server filters preserve pagination and do not manufacture empty
         }
       : path === '/work-shifts/registrations/me'
         ? page([])
-        : { ...page([shift], 2, 8), totalElements: 147 },
+        : page([shift]),
   );
   const result = await new WorkShiftRepository({ request }).board(
     Date.parse('2026-11-01T07:00:00Z'),
@@ -155,14 +155,14 @@ test('work-shift server filters preserve pagination and do not manufacture empty
   );
   expect(request).toHaveBeenCalledWith('GET', '/work-shifts', undefined, {
     status: 'OPEN',
-    page: 2,
-    size: 20,
+    page: 0,
+    size: 100,
     fromDate: '2026-11-03',
     toDate: '2026-11-09',
     shiftType: 'MORNING',
     hasVacancy: 'true',
   });
-  expect(result).toMatchObject({ page: 2, totalPages: 8, totalElements: 147 });
+  expect(result).toMatchObject({ items: [], page: 2, totalPages: 1, totalElements: 1 });
 });
 
 test('detail finds an active registration beyond the first page instead of enabling a duplicate', async () => {
@@ -267,7 +267,7 @@ test('pending cancellation remains available when its shift is deleted or no lon
   );
 });
 
-test('the work board uses server effective OPEN pagination and finds active registrations after page one', async () => {
+test('the work board excludes own active registrations across pages and still finds later candidates', async () => {
   const request = jest.fn<Pick<ApiClient, 'request'>['request']>();
   request.mockImplementation(async (_method, path, _body, query) => {
     if (path === '/caregivers/me')
@@ -279,11 +279,10 @@ test('the work board uses server effective OPEN pagination and finds active regi
     if (path === '/work-shifts') {
       expect(query?.fromDate).toBe('2026-11-01');
       return page(
-        [
-          { ...shift, id: 'new', endTime: '17:04:00' },
-          { ...shift, id: 'registered', workDate: '2026-11-02' },
-        ],
-        0,
+        query?.page === 0
+          ? [{ ...shift, id: 'registered', workDate: '2026-11-02' }]
+          : [{ ...shift, id: 'new', endTime: '17:04:00' }],
+        Number(query?.page),
         2,
       );
     }
@@ -299,8 +298,69 @@ test('the work board uses server effective OPEN pagination and finds active regi
     Date.parse('2026-11-01T07:00:00Z'),
   );
   expect(board.centerName).toBe('Test center');
-  expect(board.items.map((item) => item.shift.id)).toEqual(['new', 'registered']);
-  expect(board.items[1]?.registration?.status).toBe('APPROVED');
+  expect(board.items.map((item) => item.shift.id)).toEqual(['new']);
+  expect(board).toMatchObject({ totalElements: 1, totalPages: 1 });
   expect(board.items[0]?.shift.endTime).toBe('17:04:00');
-  expect(board.items[0]?.registration).toBeUndefined();
+});
+
+test('FE-aligned counters and lists separate future pending/approved from history', async () => {
+  const now = Date.parse('2026-11-01T07:00:00Z');
+  const registrations = [
+    {
+      ...registration,
+      id: 'pending',
+      workShiftId: 'pending-shift',
+      workDate: '2026-11-03',
+      startTime: '13:00:00',
+      endTime: '17:00:00',
+    },
+    {
+      ...registration,
+      id: 'approved',
+      workShiftId: 'approved-shift',
+      registrationStatus: 'APPROVED',
+      workDate: '2026-11-04',
+      startTime: '13:00:00',
+      endTime: '17:00:00',
+    },
+    {
+      ...registration,
+      id: 'past',
+      registrationStatus: 'APPROVED',
+      workDate: '2026-10-30',
+      startTime: '13:00:00',
+      endTime: '17:00:00',
+    },
+    {
+      ...registration,
+      id: 'rejected',
+      registrationStatus: 'REJECTED',
+      workDate: '2026-11-05',
+      startTime: '13:00:00',
+      endTime: '17:00:00',
+    },
+  ];
+  const request = jest.fn<ApiClient['request']>(async (_method, path) => {
+    if (path === '/caregivers/me') return { centerName: 'Center' };
+    if (path === '/work-shifts/registrations/me') return page(registrations);
+    if (path === '/work-shifts')
+      return page([
+        { ...shift, id: 'pending-shift' },
+        { ...shift, id: 'approved-shift' },
+        { ...shift, id: 'available' },
+      ]);
+    throw new Error('Unexpected request');
+  });
+  const repo = new WorkShiftRepository({ request });
+  expect(await repo.registrationOverview(now)).toMatchObject({ open: 1, pending: 1, approved: 1 });
+  expect((await repo.mine(0, 'PENDING', now)).items.map((row) => row.registration.id)).toEqual([
+    'pending',
+  ]);
+  expect((await repo.mine(0, 'APPROVED', now)).items.map((row) => row.registration.id)).toEqual([
+    'approved',
+  ]);
+  expect((await repo.mine(0, undefined, now)).items.map((row) => row.registration.id)).toEqual([
+    'past',
+    'rejected',
+  ]);
 });

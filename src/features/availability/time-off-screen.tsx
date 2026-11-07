@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError } from '../../core/api';
 import { useReducedMotion } from '../../core/accessibility';
 import { useApp } from '../../core/app-context';
 import { useDirty, useRemote, useWrite } from '../../core/hooks';
 import { formatInstant, vietnamDay } from '../../core/time';
+import { pickCalendarDate } from '../../core/date-picker';
 import {
   Button,
   Card,
@@ -58,6 +59,16 @@ export function TimeOffScreen({
   const [showValidation, setShowValidation] = useState(false);
   const [exists, setExists] = useState(false);
   const [notice, setNotice] = useState('');
+  const [choosingDate, setChoosingDate] = useState(false);
+  const [dateError, setDateError] = useState('');
+  const pickerOpen = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [confirmed, setConfirmed] = useState<TimeOff[]>([]);
   const [removed, setRemoved] = useState<string[]>([]);
   const closing = useRef(false);
@@ -71,14 +82,16 @@ export function TimeOffScreen({
   useEffect(() => {
     onInteractionLockChange?.(modal || write.busy || write.uncertain);
   }, [modal, write.busy, write.uncertain, onInteractionLockChange]);
-  useDirty(adding && touched, write.busy);
+  useDirty(adding && touched, write.busy || choosingDate);
   let input: TimeOffInput | undefined;
   try {
     input = timeOffInput(form);
   } catch {
     /* Inline validation accompanies the form. */
   }
-  const locked = write.busy || write.uncertain || remote.loading || !!remote.error || exists;
+  const locked =
+    write.busy || choosingDate || write.uncertain || remote.loading || !!remote.error || exists;
+  const formDisabled = write.busy || choosingDate || exists;
   const items = [
     ...(remote.data?.items ?? []),
     ...confirmed.filter((item) => !remote.data?.items.some((server) => server.id === item.id)),
@@ -87,9 +100,32 @@ export function TimeOffScreen({
     setForm((current) => ({ ...current, ...change }));
     setTouched(true);
     setExists(false);
+    if (change.startDate !== undefined || change.endDate !== undefined) setDateError('');
+  }
+  async function chooseDate(key: 'startDate' | 'endDate') {
+    if (!adding || write.busy || exists || pickerOpen.current) return;
+    pickerOpen.current = true;
+    setChoosingDate(true);
+    setDateError('');
+    Keyboard.dismiss();
+    try {
+      const selected = await pickCalendarDate(
+        form[key],
+        t(key === 'startDate' ? 'timeOffPickStartDate' : 'timeOffPickEndDate'),
+        t('confirm'),
+        t('cancel'),
+      );
+      if (mounted.current && selected !== undefined && selected !== form[key])
+        update({ [key]: selected });
+    } catch {
+      if (mounted.current) setDateError('timeOffCalendarUnavailable');
+    } finally {
+      pickerOpen.current = false;
+      if (mounted.current) setChoosingDate(false);
+    }
   }
   async function close() {
-    if (write.busy || closing.current) return;
+    if (write.busy || pickerOpen.current || closing.current) return;
     closing.current = true;
     try {
       if (
@@ -133,7 +169,7 @@ export function TimeOffScreen({
   }
   function save() {
     setShowValidation(true);
-    if (locked || !input || !remote.data) return;
+    if (locked || pickerOpen.current || !input || !remote.data) return;
     const caregiverId = remote.data.caregiverId;
     attempted.current = input;
     void write.run(
@@ -212,6 +248,7 @@ export function TimeOffScreen({
               setTouched(false);
               setAdding(true);
               setNotice('');
+              setDateError('');
             }}
           />
           {notice !== '' && <Txt>{t(notice)}</Txt>}
@@ -265,7 +302,7 @@ export function TimeOffScreen({
                     <IconButton
                       label={t('close')}
                       icon="x"
-                      disabled={write.busy}
+                      disabled={write.busy || choosingDate}
                       onPress={() => void close()}
                     />
                   </Row>
@@ -279,37 +316,72 @@ export function TimeOffScreen({
                         ]}
                         value={form.allDay ? 'day' : 'time'}
                         onChange={(value) => {
-                          if (!write.busy && !exists) update({ allDay: value === 'day' });
+                          if (!formDisabled) update({ allDay: value === 'day' });
                         }}
                       />
                       <Field
                         label={t('workFromDate')}
                         value={form.startDate}
                         onChangeText={(startDate) => update({ startDate })}
-                        editable={!write.busy && !exists}
+                        editable={!formDisabled}
                         placeholder={t('workDatePlaceholder')}
+                        hint={t('timeOffCalendarHint')}
+                        maxLength={10}
+                        autoCorrect={false}
+                        trailing={
+                          <IconButton
+                            icon="calendar"
+                            label={t('timeOffPickStartDate')}
+                            disabled={formDisabled}
+                            onPress={() => {
+                              chooseDate('startDate');
+                            }}
+                          />
+                        }
                       />
                       <Field
                         label={t('workToDate')}
                         value={form.endDate}
                         onChangeText={(endDate) => update({ endDate })}
-                        editable={!write.busy && !exists}
+                        editable={!formDisabled}
                         placeholder={t('workDatePlaceholder')}
+                        hint={t('timeOffCalendarHint')}
+                        maxLength={10}
+                        autoCorrect={false}
+                        trailing={
+                          <IconButton
+                            icon="calendar"
+                            label={t('timeOffPickEndDate')}
+                            disabled={formDisabled}
+                            onPress={() => {
+                              chooseDate('endDate');
+                            }}
+                          />
+                        }
                       />
+                      {!!dateError && (
+                        <Txt
+                          accessibilityRole="alert"
+                          accessibilityLiveRegion="polite"
+                          style={styles.error}
+                        >
+                          {t(dateError)}
+                        </Txt>
+                      )}
                       {!form.allDay && (
                         <>
                           <Field
                             label={t('timeOffStartTime')}
                             value={form.startTime}
                             onChangeText={(startTime) => update({ startTime })}
-                            editable={!write.busy && !exists}
+                            editable={!formDisabled}
                             placeholder={t('workTimePlaceholder')}
                           />
                           <Field
                             label={t('timeOffEndTime')}
                             value={form.endTime}
                             onChangeText={(endTime) => update({ endTime })}
-                            editable={!write.busy && !exists}
+                            editable={!formDisabled}
                             placeholder={t('workTimePlaceholder')}
                           />
                         </>
@@ -318,7 +390,7 @@ export function TimeOffScreen({
                         label={t('timeOffReason')}
                         value={form.reason}
                         onChangeText={(reason) => update({ reason })}
-                        editable={!write.busy && !exists}
+                        editable={!formDisabled}
                         multiline
                         maxLength={500}
                       />
@@ -371,7 +443,7 @@ export function TimeOffScreen({
                   <Button
                     label={t('close')}
                     kind="secondary"
-                    disabled={write.busy}
+                    disabled={write.busy || choosingDate}
                     onPress={() => void close()}
                   />
                 </Card>

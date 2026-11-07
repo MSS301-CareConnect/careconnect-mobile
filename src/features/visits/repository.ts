@@ -3,6 +3,7 @@ import { page } from '../../core/json';
 import { vietnamDay } from '../../core/time';
 import { parseVisit, Visit } from './models';
 import { visitWindow, waitingForNoShow } from './actions';
+import { parseRecipientProfile } from './recipient-models';
 export class VisitRepository {
   constructor(private api: Pick<ApiClient, 'request'>) {}
   private parseWrite(value: unknown) {
@@ -54,6 +55,13 @@ export class VisitRepository {
   }
   async visit(id: string) {
     return parseVisit(await this.api.request('GET', `/booking-occurrences/${id}`));
+  }
+  async recipientProfile(id: string) {
+    const profile = parseRecipientProfile(
+      await this.api.request('GET', `/care-recipients/${encodeURIComponent(id)}`),
+    );
+    if (profile.snapshot.recipientId !== id) throw new Error('Recipient scope mismatch');
+    return profile;
   }
   async acknowledge(id: string) {
     return this.parseWrite(

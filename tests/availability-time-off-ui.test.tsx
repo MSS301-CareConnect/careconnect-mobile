@@ -1,6 +1,7 @@
 import React from 'react';
-import { expect, test } from '@jest/globals';
-import { fireEvent, render } from '@testing-library/react-native';
+import { NativeModules } from 'react-native';
+import { afterEach, expect, jest, test } from '@jest/globals';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AppProvider } from '../src/core/app-context';
@@ -9,6 +10,10 @@ import { Routes } from '../src/app/routes';
 import { TimeOffScreen } from '../src/features/availability/screen';
 
 const Stack = createNativeStackNavigator<Routes>();
+const originalDatePicker: unknown = NativeModules.CareConnectDatePicker;
+afterEach(() => {
+  NativeModules.CareConnectDatePicker = originalDatePicker;
+});
 function fixture(uncertain = false) {
   const items: unknown[] = [];
   const writes: { method: string; path: string; body: unknown }[] = [];
@@ -131,6 +136,85 @@ test('a later authoritative refresh removes time off deleted by another authoriz
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại trạng thái' }));
     await screen.findByText('Chưa có ngày nghỉ sắp tới.');
     expect(screen.queryByRole('button', { name: 'Xóa ngày nghỉ' })).toBeNull();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('calendar buttons choose both dates without saving and preserve the Vietnam whole-day payload', async () => {
+  const pick = jest.fn(async () => '2030-03-01');
+  pick.mockResolvedValueOnce('2030-03-01').mockResolvedValueOnce('2030-03-02');
+  NativeModules.CareConnectDatePicker = { pick };
+  const f = fixture();
+  const screen = await open(f);
+  try {
+    await fireEvent.press(screen.getByRole('button', { name: 'Chọn ngày bắt đầu' }));
+    await screen.findByDisplayValue('2030-03-01');
+    await fireEvent.press(screen.getByRole('button', { name: 'Chọn ngày kết thúc' }));
+    await screen.findByDisplayValue('2030-03-02');
+    expect(screen.getByDisplayValue('Keep my reason')).toBeTruthy();
+    expect(f.writes).toHaveLength(0);
+    await fireEvent.press(screen.getByRole('button', { name: 'Lưu' }));
+    await screen.findByText('Đã khai báo ngày nghỉ.');
+    expect(f.writes[0]?.body).toEqual({
+      startAt: '2030-02-28T17:00:00.000Z',
+      endAt: '2030-03-02T17:00:00.000Z',
+      reason: 'Keep my reason',
+    });
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('an open calendar locks save and repeated opens; cancelling leaves form content intact', async () => {
+  let finish: ((result: unknown) => void) | undefined;
+  const pick = jest.fn(
+    () =>
+      new Promise<unknown>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  NativeModules.CareConnectDatePicker = { pick };
+  const f = fixture();
+  const screen = await open(f);
+  try {
+    const initialDate: unknown = screen.getByLabelText('Từ ngày (YYYY-MM-DD)').props.value;
+    await fireEvent.press(screen.getByRole('button', { name: 'Chọn ngày bắt đầu' }));
+    expect(screen.getByRole('button', { name: 'Lưu' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Chọn ngày kết thúc' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Chọn ngày kết thúc' }));
+    expect(pick).toHaveBeenCalledTimes(1);
+    await act(async () => finish?.(null));
+    expect(screen.getByLabelText('Từ ngày (YYYY-MM-DD)').props.value).toBe(initialDate);
+    expect(screen.getByDisplayValue('Keep my reason')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Lưu' })).not.toBeDisabled();
+    expect(f.writes).toHaveLength(0);
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('unavailable calendar keeps manual date entry usable and does not invent a selected date', async () => {
+  NativeModules.CareConnectDatePicker = undefined;
+  const f = fixture();
+  const screen = await open(f);
+  try {
+    await fireEvent.press(screen.getByRole('button', { name: 'Chọn ngày bắt đầu' }));
+    await screen.findByText('Chưa mở được lịch. Bạn có thể nhập ngày theo YYYY-MM-DD.');
+    expect(screen.getByDisplayValue('Keep my reason')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Từ ngày (YYYY-MM-DD)'), '2030-03-01');
+    await fireEvent.changeText(screen.getByLabelText('Đến ngày (YYYY-MM-DD)'), '2030-03-01');
+    expect(
+      screen.queryByText('Chưa mở được lịch. Bạn có thể nhập ngày theo YYYY-MM-DD.'),
+    ).toBeNull();
+    expect(f.writes).toHaveLength(0);
+    await fireEvent.press(screen.getByRole('button', { name: 'Lưu' }));
+    await screen.findByText('Đã khai báo ngày nghỉ.');
+    expect(f.writes[0]?.body).toEqual({
+      startAt: '2030-02-28T17:00:00.000Z',
+      endAt: '2030-03-01T17:00:00.000Z',
+      reason: 'Keep my reason',
+    });
   } finally {
     await screen.unmount();
   }

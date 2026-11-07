@@ -1,8 +1,8 @@
+// @refresh reset
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Modal, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationProp, RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../../core/app-context';
 import { useReducedMotion } from '../../core/accessibility';
 import { useRemote } from '../../core/hooks';
@@ -22,14 +22,18 @@ import {
   Section,
   Title,
   Txt,
+  colors,
 } from '../../core/ui';
-import { MainTabs, Props, Routes, VisitListRange } from '../../app/routes';
-import { NavigationRow } from '../../core/navigation-row';
+import { MainTabs, Props, VisitListRange } from '../../app/routes';
+import { BookingRequestsContent } from '../booking-requests/screen';
+import { useBookingRequestCount } from '../booking-requests/use-request-count';
 import { VisitRepository } from './repository';
 import { VisitActionPanel } from './action-panel';
 import { useVietnamDay as useDay } from '../../core/use-vietnam-day';
 import { VisitCard } from './card';
 import { statuses } from './models';
+import { RecipientCard } from './recipient-profile';
+import { AddressActions } from './address-actions';
 function useRepo() {
   const { api } = useApp();
   return useMemo(() => new VisitRepository(api), [api]);
@@ -37,9 +41,17 @@ function useRepo() {
 export function VisitsScreen() {
   const route = useRoute<RouteProp<MainTabs, 'Schedule'>>();
   const navigation = useNavigation<NavigationProp<MainTabs, 'Schedule'>>();
-  const consumeRange = useCallback(() => navigation.setParams({ range: undefined }), [navigation]);
+  const consumeRange = useCallback(
+    () => navigation.setParams({ range: undefined, bookingId: undefined }),
+    [navigation],
+  );
   return (
-    <VisitList history={false} requestedRange={route.params?.range} consumeRange={consumeRange} />
+    <VisitList
+      history={false}
+      requestedRange={route.params?.range}
+      requestedBookingId={route.params?.bookingId}
+      consumeRange={consumeRange}
+    />
   );
 }
 export function HistoryScreen() {
@@ -48,18 +60,24 @@ export function HistoryScreen() {
 function VisitList({
   history,
   requestedRange,
+  requestedBookingId,
   consumeRange,
 }: {
   history: boolean;
   requestedRange?: VisitListRange;
+  requestedBookingId?: string;
   consumeRange?: () => void;
 }) {
   const { t } = useApp();
-  const navigation = useNavigation<NativeStackNavigationProp<Routes>>();
   const reducedMotion = useReducedMotion();
   const repo = useRepo();
+  const requests = useBookingRequestCount();
   const day = useDay();
   const [range, setRange] = useState<string>(requestedRange ?? 'upcoming');
+  const [bookingId, setBookingId] = useState(requestedBookingId);
+  const [responseLocked, setResponseLocked] = useState(false);
+  const [requestRefresh, setRequestRefresh] = useState(0);
+  const responding = !history && range === 'respond';
   const showHistory = history || range === 'history';
   const [status, setStatus] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
@@ -71,12 +89,16 @@ function VisitList({
   useEffect(() => {
     if (history || !requestedRange) return;
     setRange(requestedRange);
+    setBookingId(requestedBookingId);
     setDates({});
     setStatus('');
     setPage(0);
     setFilter(false);
     consumeRange?.();
-  }, [history, requestedRange, consumeRange]);
+  }, [history, requestedRange, requestedBookingId, consumeRange]);
+  const toConfirm = useRemote(
+    useCallback(() => repo.visits(0, day, undefined, 'SCHEDULED'), [repo, day]),
+  );
   const valid =
     (!from || (/^\d{4}-\d{2}-\d{2}$/.test(from) && !Number.isNaN(Date.parse(from)))) &&
     (!to || (/^\d{4}-\d{2}-\d{2}$/.test(to) && !Number.isNaN(Date.parse(to)))) &&
@@ -85,20 +107,35 @@ function VisitList({
     () =>
       repo.visits(
         p,
-        showHistory ? undefined : (dates.from ?? (range === 'all' ? undefined : day)),
-        showHistory ? undefined : (dates.to ?? (range === 'today' ? day : undefined)),
-        showHistory ? 'COMPLETED' : status || undefined,
+        showHistory
+          ? undefined
+          : responding
+            ? day
+            : (dates.from ?? (range === 'all' ? undefined : day)),
+        showHistory || responding ? undefined : (dates.to ?? (range === 'today' ? day : undefined)),
+        responding ? 'SCHEDULED' : showHistory ? 'COMPLETED' : status || undefined,
       ),
-    [repo, p, showHistory, dates, range, day, status],
+    [repo, p, showHistory, responding, dates, range, day, status],
   );
   const remote = useRemote(load);
+  const showCenter = !responding || remote.loading || !!remote.error || !!remote.data?.items.length;
+  const reloadRequests = requests.reload;
+  const reloadToConfirm = toConfirm.reload;
+  const refreshResponse = useCallback(() => {
+    void reloadRequests();
+    void reloadToConfirm();
+  }, [reloadRequests, reloadToConfirm]);
+  const responseCount =
+    requests.error || toConfirm.error || requests.data === undefined || !toConfirm.data
+      ? undefined
+      : requests.data + toConfirm.data.totalElements;
   return (
     <Screen>
       <Row>
         <View style={styles.grow}>
           <Title>{t(showHistory ? 'history' : 'assignedVisits')}</Title>
         </View>
-        {!showHistory && (
+        {!showHistory && !responding && (
           <IconButton
             label={t('visitsFilters')}
             icon="sliders"
@@ -113,38 +150,71 @@ function VisitList({
         <IconButton
           label={t('refresh')}
           icon="refresh-cw"
-          disabled={remote.loading}
-          onPress={remote.reload}
+          disabled={remote.loading || responseLocked}
+          onPress={() => {
+            void remote.reload();
+            refreshResponse();
+            setRequestRefresh((value) => value + 1);
+          }}
         />
       </Row>
       {!history && (
-        <Card>
-          <NavigationRow
-            label={t('shellRequests')}
-            description={t('shellRequestsHint')}
-            icon="inbox"
-            onPress={() => navigation.navigate('BookingRequests')}
-          />
-        </Card>
-      )}
-      {!history && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <Chips
-            values={['today', 'upcoming', 'all', 'history'].map((value) => ({
-              value,
-              label: t(value),
-            }))}
-            value={range}
-            onChange={(value) => {
-              setRange(value);
-              setDates({});
-              setStatus('');
-              setPage(0);
-            }}
-          />
+          <View style={styles.toolbar}>
+            {['respond', 'today', 'upcoming', 'all', 'history'].map((value) => (
+              <Pressable
+                key={value}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: range === value, disabled: responseLocked }}
+                disabled={responseLocked}
+                onPress={() => {
+                  setRange(value);
+                  setBookingId(undefined);
+                  setDates({});
+                  setStatus('');
+                  setPage(0);
+                }}
+                style={({ pressed }) => [
+                  styles.toolbarTab,
+                  range === value && styles.toolbarActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Txt style={[styles.toolbarLabel, range === value && styles.toolbarActiveLabel]}>
+                  {t(value)}
+                </Txt>
+                {value === 'respond' && responseCount !== undefined && responseCount > 0 && (
+                  <View style={styles.responseBadge}>
+                    <Txt
+                      accessibilityLiveRegion="polite"
+                      accessibilityLabel={t('respond') + ': ' + responseCount}
+                      style={styles.responseBadgeText}
+                    >
+                      {responseCount}
+                    </Txt>
+                  </View>
+                )}
+              </Pressable>
+            ))}
+          </View>
         </ScrollView>
       )}
-      {!showHistory && !!(dates.from || dates.to || status) && (
+      {responding && (
+        <BookingRequestsContent
+          embedded
+          bookingId={bookingId}
+          refreshKey={requestRefresh}
+          onChanged={refreshResponse}
+          onLockedChange={setResponseLocked}
+        />
+      )}
+      {responding && showCenter && (
+        <View style={styles.responseHeading}>
+          <Txt style={styles.responseTitle}>{t('responseFromCenter')}</Txt>
+          <Txt muted>{t('responseFromCenterHint')}</Txt>
+        </View>
+      )}
+      {!showHistory && !responding && !!(dates.from || dates.to || status) && (
         <Txt muted>{t('filtersApplied')}</Txt>
       )}
       <Modal
@@ -195,21 +265,23 @@ function VisitList({
           </Screen>
         </SafeAreaView>
       </Modal>
-      <RemoteState {...remote} retry={remote.reload}>
-        {remote.data && (
-          <>
-            {remote.data.items.length ? (
-              remote.data.items.map((visit) => <VisitCard key={visit.id} visit={visit} />)
-            ) : (
-              <Card>
-                <Txt>{t('emptyVisits')}</Txt>
-                <Txt muted>{t('emptyHint')}</Txt>
-              </Card>
-            )}
-            <Pagination {...remote.data} onChange={setPage} />
-          </>
-        )}
-      </RemoteState>
+      {showCenter && (
+        <RemoteState {...remote} retry={remote.reload}>
+          {remote.data && (
+            <>
+              {remote.data.items.length ? (
+                remote.data.items.map((visit) => <VisitCard key={visit.id} visit={visit} />)
+              ) : (
+                <Card>
+                  <Txt>{t('emptyVisits')}</Txt>
+                  <Txt muted>{t('emptyHint')}</Txt>
+                </Card>
+              )}
+              <Pagination {...remote.data} onChange={setPage} />
+            </>
+          )}
+        </RemoteState>
+      )}
     </Screen>
   );
 }
@@ -235,6 +307,7 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
             </View>
             <Section title={t('address')} icon="map-pin">
               <Txt>{visit.address || '—'}</Txt>
+              <AddressActions key={visit.address} address={visit.address} />
               {/^\+?[\d\s-]{9,16}$/.test(visit.phone) && (
                 <Button
                   kind="secondary"
@@ -244,39 +317,7 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
                 />
               )}
             </Section>
-            <Section title={t('patient')} icon="user">
-              {visit.snapshot ? (
-                <>
-                  {visit.snapshot.info.map((info) => (
-                    <Info
-                      key={info.label}
-                      label={t(info.label)}
-                      value={
-                        ['gender', 'mobilityLevel', 'independenceLevel'].includes(info.label)
-                          ? t(info.value)
-                          : info.value
-                      }
-                    />
-                  ))}
-                  {visit.snapshot.medications.length > 0 && (
-                    <>
-                      <Txt style={styles.label}>{t('medication')}</Txt>
-                      {visit.snapshot.medications.map((m, i) => (
-                        <Info key={i} label={m.name} value={m.details} />
-                      ))}
-                    </>
-                  )}
-                  {visit.snapshot.emergency && (
-                    <Info
-                      label={t('emergency')}
-                      value={`${visit.snapshot.emergency.name}\n${visit.snapshot.emergency.phone}`}
-                    />
-                  )}
-                </>
-              ) : (
-                <Txt muted>{t('patientHidden')}</Txt>
-              )}
-            </Section>
+            <RecipientCard visit={visit} repo={repo} />
             <Section title={t('services')} icon="heart">
               {visit.services.length ? (
                 visit.services.map((value, i) => <Txt key={i}>• {value}</Txt>)
@@ -313,6 +354,33 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
   );
 }
 const styles = StyleSheet.create({
+  toolbar: { flexDirection: 'row', gap: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
+  toolbarTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 48,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  toolbarActive: { borderBottomColor: colors.primary },
+  toolbarLabel: { fontSize: 16, lineHeight: 24, fontWeight: '600', color: colors.muted },
+  toolbarActiveLabel: { color: colors.primary },
+  responseBadge: {
+    minWidth: 24,
+    minHeight: 24,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.warningBg,
+  },
+  responseBadgeText: { fontSize: 13, lineHeight: 20, fontWeight: '700', color: colors.warning },
+  responseHeading: { gap: 4, paddingTop: 8 },
+  responseTitle: { fontSize: 18, lineHeight: 26, fontWeight: '700' },
+  pressed: { opacity: 0.7 },
   grow: { flex: 1 },
   heading: { gap: 8 },
   label: { fontWeight: '700' },

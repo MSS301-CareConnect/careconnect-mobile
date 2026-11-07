@@ -199,7 +199,10 @@ export function NotificationsScreen({ navigation }: Props<'Notifications'>) {
     feed?.dismiss();
     await write.run(async () => {
       if (target.screen === 'BookingRequests') {
-        navigation.navigate('BookingRequests', { bookingId: target.bookingId });
+        navigation.navigate('Tabs', {
+          screen: 'Schedule',
+          params: { range: 'respond', bookingId: target.bookingId },
+        });
       } else if (target.screen === 'BookingVisits') {
         const visits = await repo.bookingVisits(target.bookingId);
         const onlyVisit = visits.length === 1 ? visits[0] : undefined;

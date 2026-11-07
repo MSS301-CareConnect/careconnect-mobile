@@ -76,7 +76,7 @@ export function newestAvatar(files: ProfileMedia[], now = Date.now()) {
     )
     .sort((a, b) => b.order - a.order)[0];
 }
-function validDate(value: string) {
+export function validCertificateDate(value: string) {
   if (!value) return true;
   const instant = Date.parse(value + 'T00:00:00Z');
   return (
@@ -92,8 +92,8 @@ export function validCertificate(value: CertificateDraft) {
     !!value.issuedBy.trim() &&
     value.issuedBy.length <= 255 &&
     value.credential.length <= 255 &&
-    validDate(value.issuedDate) &&
-    validDate(value.expiryDate) &&
+    validCertificateDate(value.issuedDate) &&
+    validCertificateDate(value.expiryDate) &&
     (!value.issuedDate || !value.expiryDate || value.expiryDate >= value.issuedDate)
   );
 }

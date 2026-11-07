@@ -1,4 +1,5 @@
 import { ApiError } from '../../core/api';
+import { checkInAllowed } from '../../core/time';
 import { Visit } from './models';
 export function visitWindow(visit: Visit) {
   const start = Date.parse(visit.startAt);
@@ -14,6 +15,28 @@ export function canAcknowledge(visit: Visit, now = Date.now()) {
   return (
     visit.status === 'SCHEDULED' && now < Date.parse(visit.startAt) && !waitingForNoShow(visit)
   );
+}
+// Starting is a separate next step after an acknowledged server response, as on FE.
+export function careStartStep(visit: Visit, now = Date.now()): 'none' | 'waiting' | 'ready' {
+  if (visit.status !== 'ACKNOWLEDGED' || visit.sessionId || waitingForNoShow(visit)) return 'none';
+  const { opens, closes } = visitWindow(visit);
+  if (
+    !Number.isFinite(opens) ||
+    !Number.isFinite(closes) ||
+    now >= closes ||
+    now >= Date.parse(visit.endAt)
+  )
+    return 'none';
+  if (now < opens) return 'waiting';
+  return checkInAllowed(
+    visit.startAt,
+    visit.endAt,
+    now,
+    visit.checkInOpensAt,
+    visit.checkInClosesAt,
+  )
+    ? 'ready'
+    : 'none';
 }
 export function canReportNoShow(visit: Visit, now = Date.now()) {
   return (

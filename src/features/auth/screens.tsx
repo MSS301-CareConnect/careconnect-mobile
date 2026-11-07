@@ -9,6 +9,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useDirty, useWrite } from '../../core/hooks';
 import { Button, Card, ErrorBox, Field, Screen, Title, Txt, colors } from '../../core/ui';
 import { isStrongPassword } from '../../core/validation';
+
 export function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<Routes>>();
   const { api, t, locale, setLocale } = useApp();
@@ -89,17 +90,28 @@ export function LoginScreen() {
             </Pressable>
           }
         />
+        <View style={styles.recoveryRow}>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={t('resetPassword')}
+            accessibilityState={{ disabled: write.busy }}
+            disabled={write.busy}
+            onPress={() => navigation.navigate('Forgot')}
+            style={({ pressed }) => [
+              styles.textLink,
+              write.busy && styles.disabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Txt style={styles.textLinkLabel}>{t('resetPassword')}</Txt>
+          </Pressable>
+        </View>
         <ErrorBox error={write.error} />
         <Button
           label={t('login')}
           loading={write.busy}
           disabled={!email.trim() || !password}
           onPress={() => void write.run(() => api.login(email, password))}
-        />
-        <Button
-          kind="secondary"
-          label={t('forgot')}
-          onPress={() => navigation.navigate('Forgot')}
         />
       </Card>
       <Txt muted style={{ textAlign: 'center', fontSize: 12 }}>
@@ -188,6 +200,16 @@ export function ForgotScreen() {
 }
 
 const styles = StyleSheet.create({
+  recoveryRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  textLink: {
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    maxWidth: '100%',
+  },
+  textLinkLabel: { color: colors.primary, fontWeight: '600', textAlign: 'center' },
+  disabled: { opacity: 0.45 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
   brandName: {

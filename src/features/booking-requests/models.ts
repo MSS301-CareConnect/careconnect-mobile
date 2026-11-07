@@ -6,6 +6,9 @@ export type BookingRequest = {
   status: string;
   bookingType: string;
   acceptanceDueAt: string;
+  recipientName: string;
+  customerName: string;
+  allergies: string;
   recipientAge?: number;
   recipientGender: string;
   area: string;
@@ -15,7 +18,7 @@ export type BookingRequest = {
   occurrences: { id: string; startAt: string; endAt: string }[];
 };
 
-// This preview deliberately has no patient name, full address, phone or clinical snapshot.
+// The current preview permits snapshot names/allergies, but never a full address or phone.
 export function parseBookingRequest(value: unknown): BookingRequest {
   const j = object(value);
   return {
@@ -24,6 +27,9 @@ export function parseBookingRequest(value: unknown): BookingRequest {
     status: required(j.status),
     bookingType: text(j.bookingType),
     acceptanceDueAt: text(j.acceptanceDueAt),
+    recipientName: text(j.recipientName),
+    customerName: text(j.customerName),
+    allergies: text(j.allergies),
     recipientAge: number(j.recipientAge),
     recipientGender: text(j.recipientGender),
     area: [j.ward, j.district, j.province].map(text).filter(Boolean).join(', '),

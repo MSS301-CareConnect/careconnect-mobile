@@ -21,9 +21,24 @@ beforeEach(() => {
 });
 function fixture(
   existing = false,
-  options: { uncertainSave?: boolean; uncertainUpload?: boolean } = {},
+  options: { uncertainSave?: boolean; uncertainUpload?: boolean; active?: boolean } = {},
 ) {
   let token: string | null = 'refresh';
+  let sessionStatus = options.active ? 'IN_PROGRESS' : 'ENDED';
+  let taskStatus = 'PENDING';
+  const task = () => ({
+    id: 'task',
+    title: 'Service task',
+    taskType: 'SERVICE',
+    status: taskStatus,
+    sortOrder: 0,
+  });
+  const session = () => ({
+    sessionId: 'session',
+    bookingId: 'booking',
+    status: sessionStatus,
+    tasks: options.active ? [task()] : [],
+  });
   let report = existing
     ? {
         id: 'report',
@@ -67,13 +82,29 @@ function fixture(
       else if (path === '/users/me')
         result = { id: 'user', roles: ['CAREGIVER'], status: 'ACTIVE' };
       else if (path === '/notifications/unread-count') result = { count: 0 };
-      else if (path === '/notifications' || path === '/care-sessions/session/notes')
-        result = page([]);
-      else if (path === '/booking-occurrences/visit') result = visit;
+      else if (path === '/notifications') result = page([]);
+      else if (path === '/care-sessions/session/notes') {
+        const index = Number(new URL(String(input)).searchParams.get('page') ?? 0);
+        result = options.active
+          ? {
+              items: [{ id: 'note-' + index, content: 'Note page ' + index }],
+              page: index,
+              totalPages: 2,
+              totalElements: 21,
+            }
+          : page([]);
+      } else if (path === '/booking-occurrences/visit') result = visit;
       else if (path === '/booking-occurrences') result = page([visit]);
-      else if (path === '/care-sessions/session')
-        result = { sessionId: 'session', bookingId: 'booking', status: 'ENDED', tasks: [] };
-      else if (path === '/care-reports' && init?.method === 'GET')
+      else if (path === '/care-sessions/session') result = session();
+      else if (path === '/care-sessions/session/tasks/task' && init?.method === 'PATCH') {
+        events.push('done');
+        taskStatus = 'DONE';
+        result = task();
+      } else if (path === '/care-sessions/session/end' && init?.method === 'POST') {
+        events.push('end');
+        sessionStatus = 'ENDED';
+        result = session();
+      } else if (path === '/care-reports' && init?.method === 'GET')
         result = page(report ? [report] : []);
       else if (path === '/care-reports/report/photos' && report) {
         events.push('upload');
@@ -119,7 +150,6 @@ async function openReport(api: ApiClient) {
   const screen = await render(<App client={api} />);
   await fireEvent.press(await screen.findByText('Report fixture'));
   await fireEvent.press(await screen.findByRole('button', { name: 'Mở ca chăm sóc' }));
-  await fireEvent.press(await screen.findByRole('button', { name: 'Báo cáo chăm sóc' }));
   await screen.findByLabelText('Khuyến nghị');
   return screen;
 }
@@ -135,7 +165,24 @@ test('report has only summary and recommendations text fields, with an explicit 
     await fireEvent.changeText(screen.getByLabelText('Tóm tắt buổi chăm sóc'), 'Care summary');
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu bản nháp' }));
     expect(f.writes).toHaveLength(0);
-    await fireEvent.press(screen.getByRole('button', { name: 'Ổn định' }));
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    await fireEvent.press(screen.getByRole('button', { name: 'Tình trạng chung' }));
+    expect(screen.getByRole('button', { name: 'Tình trạng chung', expanded: true })).toBeTruthy();
+    expect(screen.getAllByRole('radio', { checked: false })).toHaveLength(4);
+    expect(screen.getByDisplayValue('Care summary')).toBeVisible();
+    await fireEvent.press(screen.getByRole('button', { name: 'Tình trạng chung' }));
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    await fireEvent.press(screen.getByRole('button', { name: 'Tình trạng chung' }));
+    await fireEvent.press(screen.getByRole('radio', { name: 'Ổn định' }));
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    expect(
+      screen.getByRole('button', {
+        name: 'Tình trạng chung',
+        expanded: false,
+        value: { text: 'Ổn định' },
+      }),
+    ).toBeTruthy();
+    expect(f.writes).toHaveLength(0);
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu bản nháp' }));
     await waitFor(() => expect(f.writes).toHaveLength(1));
     expect(f.writes[0]).toEqual({
@@ -178,7 +225,8 @@ test('saving a report saves its draft before uploading selected photos', async (
     pick.mockResolvedValueOnce({ canceled: false, assets: [photo] });
     await fireEvent.press(screen.getByRole('button', { name: 'Thêm ảnh' }));
     await screen.findByText('photo.png');
-    await fireEvent.press(screen.getByRole('button', { name: 'Ổn định' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Tình trạng chung' }));
+    await fireEvent.press(screen.getByRole('radio', { name: 'Ổn định' }));
     await fireEvent.changeText(screen.getByLabelText('Tóm tắt buổi chăm sóc'), 'Care summary');
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu bản nháp' }));
     await screen.findByRole('button', { name: 'Xem tài liệu' });
@@ -222,7 +270,8 @@ test('an uncertain save reconciles its draft ID without losing text or photos or
     pick.mockResolvedValueOnce({ canceled: false, assets: [photo] });
     await fireEvent.press(screen.getByRole('button', { name: 'Thêm ảnh' }));
     await screen.findByText('photo.png');
-    await fireEvent.press(screen.getByRole('button', { name: 'Ổn định' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Tình trạng chung' }));
+    await fireEvent.press(screen.getByRole('radio', { name: 'Ổn định' }));
     await fireEvent.changeText(screen.getByLabelText('Tóm tắt buổi chăm sóc'), 'Retain summary');
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu bản nháp' }));
     await screen.findByText(/Chưa xác định được kết quả/);
@@ -291,6 +340,9 @@ test('editing the two visible fields preserves existing optional notes and optim
   const f = fixture(true);
   const screen = await openReport(f.api);
   try {
+    await fireEvent.press(screen.getByRole('button', { name: 'Tình trạng chung' }));
+    expect(screen.getByRole('radio', { name: 'Cải thiện', checked: true })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Tình trạng chung' }));
     await fireEvent.changeText(screen.getByLabelText('Tóm tắt buổi chăm sóc'), 'Updated summary');
     await fireEvent.changeText(screen.getByLabelText('Khuyến nghị'), 'Updated recommendations');
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu bản nháp' }));
@@ -309,6 +361,40 @@ test('editing the two visible fields preserves existing optional notes and optim
       }),
     });
   } finally {
+    await screen.unmount();
+  }
+});
+
+test('inline care detail gates checkout and keeps the draft through task writes and note pagination', async () => {
+  const f = fixture(false, { active: true });
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  const screen = await openReport(f.api);
+  try {
+    expect(screen.getByText('Đang diễn ra')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Kết thúc ca' })).toBeDisabled();
+    await fireEvent.changeText(
+      screen.getByLabelText('Tóm tắt buổi chăm sóc'),
+      'Keep this report draft',
+    );
+    await fireEvent.press(screen.getByRole('button', { name: 'Tình trạng chung' }));
+    await fireEvent.press(screen.getByRole('radio', { name: 'Ổn định' }));
+    expect(screen.getByRole('button', { name: 'Gửi báo cáo cho người thân' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Xong' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Kết thúc ca' })).toBeEnabled());
+    expect(screen.getByDisplayValue('Keep this report draft')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Tiếp' }));
+    await screen.findByText('Note page 1');
+    expect(screen.getByDisplayValue('Keep this report draft')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Kết thúc ca' }));
+    await act(async () => alert.mock.calls.at(-1)?.[2]?.[1]?.onPress?.());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Gửi báo cáo cho người thân' })).toBeEnabled(),
+    );
+    expect(screen.getByDisplayValue('Keep this report draft')).toBeTruthy();
+    expect(f.events).toEqual(['done', 'end']);
+    expect(f.writes).toHaveLength(0);
+  } finally {
+    alert.mockRestore();
     await screen.unmount();
   }
 });

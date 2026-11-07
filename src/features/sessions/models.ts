@@ -1,11 +1,20 @@
-import { array, object, required, text } from '../../core/json';
+import { array, number, object, required, text } from '../../core/json';
 function noteDetails(j: Record<string, unknown>, keys: string[]) {
   return keys.flatMap((label) => {
     const raw = j[label];
     return typeof raw === 'number' && Number.isFinite(raw) ? [{ label, value: String(raw) }] : [];
   });
 }
-export type Task = { id: string; title: string; status: string; skipReason: string; note: string };
+export type Task = {
+  id: string;
+  title: string;
+  status: string;
+  skipReason: string;
+  note: string;
+  type: string;
+  scheduledTime: string;
+  order: number;
+};
 export type Session = {
   id: string;
   bookingId: string;
@@ -16,18 +25,22 @@ export type Session = {
   checkInAt: string;
   checkOutAt: string;
 };
+export function parseTask(value: unknown, index = 0): Task {
+  const task = object(value);
+  return {
+    id: required(task.id),
+    title: text(task.title),
+    status: required(task.status),
+    skipReason: text(task.skipReason),
+    note: text(task.note),
+    type: text(task.taskType),
+    scheduledTime: text(task.scheduledTime),
+    order: number(task.sortOrder) ?? index,
+  };
+}
 export function parseSession(value: unknown): Session {
   const j = object(value);
-  const tasks = array(j.tasks).map((v) => {
-    const t = object(v);
-    return {
-      id: required(t.id),
-      title: text(t.title),
-      status: required(t.status),
-      skipReason: text(t.skipReason),
-      note: text(t.note),
-    };
-  });
+  const tasks = array(j.tasks).map(parseTask);
   return {
     id: required(j.sessionId),
     bookingId: required(j.bookingId),
@@ -35,7 +48,7 @@ export function parseSession(value: unknown): Session {
     status: required(j.status),
     checkInAt: text(j.checkInAt),
     checkOutAt: text(j.checkOutAt),
-    tasks,
+    tasks: tasks.sort((a, b) => a.order - b.order),
     done: tasks.filter((t) => t.status === 'DONE').length,
   };
 }

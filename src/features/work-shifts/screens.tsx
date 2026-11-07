@@ -15,7 +15,12 @@ import {
   Txt,
 } from '../../core/ui';
 import { Props } from '../../app/routes';
-import { hasActiveRegistration, registrationBlockReason, registrationShift } from './models';
+import {
+  hasActiveRegistration,
+  Registration,
+  registrationBlockReason,
+  registrationShift,
+} from './models';
 import { WorkShiftRepository } from './repository';
 import { RegistrationStatus, ShiftSummary } from './card';
 function useRepo() {
@@ -46,12 +51,14 @@ export function WorkShiftScreen({ route, navigation }: Props<'WorkShift'>) {
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const [now, setNow] = useState(Date.now);
   const [notice, setNotice] = useState('');
+  const [savedRegistration, setSavedRegistration] = useState<Registration>();
+  const [needsRefresh, setNeedsRefresh] = useState(false);
   useDirty(note.trim().length > 0, write.busy);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  const locked = write.busy || write.uncertain || remote.loading;
+  const locked = write.busy || write.uncertain || remote.loading || !!remote.error || needsRefresh;
   async function reconcile() {
     const fresh = await remote.reload();
     if (fresh) {
@@ -61,21 +68,28 @@ export function WorkShiftScreen({ route, navigation }: Props<'WorkShift'>) {
       )
         setNote('');
       setCancelConfirm(false);
+      setSavedRegistration(undefined);
+      setNeedsRefresh(false);
       write.reset();
     }
   }
   const data = remote.data;
-  const registration = data?.registration;
+  const registration = savedRegistration ?? data?.registration;
   const summary = data?.shift ?? (registration ? registrationShift(registration) : undefined);
-  const active = hasActiveRegistration(data?.registration);
+  const active = hasActiveRegistration(registration);
   const blockReason = data?.shift
-    ? registrationBlockReason(data.shift, data.registration, data.eligible, now)
+    ? registrationBlockReason(data.shift, registration, data.eligible, now)
     : undefined;
   const errorKey = write.error instanceof ApiError ? errorKeys[write.error.code] : undefined;
   return (
     <Screen>
       <Title>{t('workShiftDetails')}</Title>
-      <RemoteState {...remote} retry={reconcile}>
+      {data && <ErrorBox error={remote.error} retry={reconcile} />}
+      <RemoteState
+        loading={remote.loading && !data}
+        error={data ? undefined : remote.error}
+        retry={reconcile}
+      >
         {data && (
           <>
             <Card>
@@ -93,6 +107,22 @@ export function WorkShiftScreen({ route, navigation }: Props<'WorkShift'>) {
             {registration && (
               <Section title={t('workShiftRegistration')}>
                 <RegistrationStatus registration={registration} />
+                {registration.status === 'PENDING' && (
+                  <>
+                    <Txt accessibilityLiveRegion="polite">{t('workPendingReviewHint')}</Txt>
+                    <Button
+                      kind="secondary"
+                      label={t('workViewPending')}
+                      disabled={write.busy}
+                      onPress={() =>
+                        navigation.navigate('Tabs', {
+                          screen: 'Availability',
+                          params: { section: 'register', registrationView: 'pending' },
+                        })
+                      }
+                    />
+                  </>
+                )}
                 <Info label={t('workShiftRegistrationNote')} value={registration.caregiverNote} />
                 <Info label={t('workShiftRejectionReason')} value={registration.rejectionReason} />
                 {registration.status === 'APPROVED' && (
@@ -154,6 +184,7 @@ export function WorkShiftScreen({ route, navigation }: Props<'WorkShift'>) {
             )}
             {!active && data.shift && (
               <Section title={t('workShiftRegistration')}>
+                <Txt muted>{t('workSubmitHint')}</Txt>
                 {blockReason && <Txt muted>{t(blockReason)}</Txt>}
                 <Field
                   label={t('workShiftRegistrationNote')}
@@ -165,17 +196,23 @@ export function WorkShiftScreen({ route, navigation }: Props<'WorkShift'>) {
                 />
                 <Txt muted>{t('workShiftNoteLimit')}</Txt>
                 <Button
-                  label={t('workShiftRegister')}
+                  label={t('workSubmitRegistration')}
                   icon="calendar"
                   loading={write.busy}
                   disabled={locked || !!blockReason || note.length > 2000}
                   onPress={() =>
                     void write.run(
                       () => repo.register(id, note),
-                      async () => {
+                      async (result) => {
+                        setSavedRegistration(result);
+                        setNeedsRefresh(true);
                         setNote('');
-                        setNotice('workShiftRegistered');
-                        await remote.reload();
+                        setNotice('');
+                        const fresh = await remote.reload();
+                        if (fresh) {
+                          setSavedRegistration(undefined);
+                          setNeedsRefresh(false);
+                        }
                       },
                     )
                   }
@@ -194,8 +231,10 @@ export function WorkShiftScreen({ route, navigation }: Props<'WorkShift'>) {
               </Card>
             )}
             {notice !== '' && <Txt>{t(notice)}</Txt>}
-            {errorKey && <Txt muted>{t(errorKey)}</Txt>}
-            <ErrorBox error={write.error} retry={reconcile} />
+            {needsRefresh && (
+              <Txt accessibilityLiveRegion="polite">{t('workRegistrationRefreshRequired')}</Txt>
+            )}
+            <ErrorBox error={write.error} messageKey={errorKey} retry={reconcile} />
             {!write.error && (
               <Button
                 label={t('refresh')}

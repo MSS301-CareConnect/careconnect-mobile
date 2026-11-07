@@ -94,6 +94,38 @@ export const profileCopy: Record<string, readonly [string, string]> = {
     'Manage your certificates and supporting files. Your center verifies the information.',
   ],
   certAdd: ['Thêm chứng chỉ', 'Add certificate'],
+  certFormDescription: [
+    'Tải tệp minh chứng và điền thông tin chứng chỉ để trung tâm xác minh.',
+    'Upload supporting evidence and enter the certificate details for your center to verify.',
+  ],
+  certDetailsHeading: ['Thông tin chứng chỉ', 'Certificate details'],
+  certRequiredHint: ['Các mục có dấu * là bắt buộc.', 'Fields marked * are required.'],
+  certOptionalHint: ['Không bắt buộc.', 'Optional.'],
+  certFileRequired: ['Tệp chứng chỉ *', 'Certificate file *'],
+  certPreview: ['Xem trước ảnh chứng chỉ đã chọn', 'Preview of the selected certificate image'],
+  certFileMissing: [
+    'Vui lòng chọn tệp chứng chỉ PDF, JPEG hoặc PNG.',
+    'Choose a PDF, JPEG or PNG certificate file.',
+  ],
+  certRequired: ['Vui lòng điền thông tin này.', 'This field is required.'],
+  certTooLong: ['Tối đa 255 ký tự.', 'Use up to 255 characters.'],
+  certInvalidDate: [
+    'Chọn ngày trên lịch hoặc nhập ngày hợp lệ theo YYYY-MM-DD.',
+    'Choose a date or enter a valid date as YYYY-MM-DD.',
+  ],
+  certDatesOrder: [
+    'Ngày hết hạn không được trước ngày cấp.',
+    'Expiry cannot be before the issue date.',
+  ],
+  certChooseDate: ['Chọn ngày', 'Choose date'],
+  certDatePickerUnavailable: [
+    'Chưa mở được lịch. Bạn có thể nhập ngày theo YYYY-MM-DD.',
+    'The calendar could not open. You can enter the date as YYYY-MM-DD.',
+  ],
+  certFormErrors: [
+    'Kiểm tra các mục được đánh dấu trước khi lưu. Thông tin bạn đã nhập vẫn được giữ lại.',
+    'Check the marked fields before saving. Your entries have been kept.',
+  ],
   certEdit: ['Sửa chứng chỉ', 'Edit certificate'],
   certEditTitle: ['Chi tiết chứng chỉ', 'Certificate details'],
   certDelete: ['Xóa chứng chỉ', 'Delete certificate'],
@@ -119,12 +151,12 @@ export const profileCopy: Record<string, readonly [string, string]> = {
   certIssueDate: ['Ngày cấp', 'Issue date'],
   certExpiryDate: ['Ngày hết hạn', 'Expiry date'],
   certDateHint: [
-    'Không bắt buộc. Nhập YYYY-MM-DD, ví dụ 2026-11-05.',
-    'Optional. Enter YYYY-MM-DD, for example 2026-11-05.',
+    'Không bắt buộc. Bấm lịch để chọn ngày hoặc nhập YYYY-MM-DD.',
+    'Optional. Tap the calendar or enter YYYY-MM-DD.',
   ],
   certExpiryHint: [
-    'Không bắt buộc. YYYY-MM-DD; không trước ngày cấp.',
-    'Optional. YYYY-MM-DD; cannot precede the issue date.',
+    'Để trống nếu không có ngày hết hạn. Không trước ngày cấp.',
+    'Leave blank if there is no expiry date. Cannot precede the issue date.',
   ],
   certValidation: [
     'Nhập tên và đơn vị cấp (tối đa 255 ký tự). Kiểm tra định dạng và thứ tự ngày.',

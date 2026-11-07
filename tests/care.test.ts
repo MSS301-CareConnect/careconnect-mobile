@@ -5,11 +5,45 @@ import { ReportRepository } from '../src/features/reports/repository';
 import { emptyReport } from '../src/features/reports/models';
 import { checkInAllowed, vietnamDay } from '../src/core/time';
 import { ApiError } from '../src/core/api';
+import { parseSession } from '../src/features/sessions/models';
 const list = (items: unknown[], page = 0, totalPages = 1) => ({
   items,
   page,
   totalPages,
   totalElements: items.length,
+});
+test('session tasks preserve server type/time/order and distinguish skipped from done', () => {
+  const session = parseSession({
+    sessionId: 's',
+    bookingId: 'b',
+    status: 'IN_PROGRESS',
+    tasks: [
+      { id: 'later', title: 'Service', taskType: 'SERVICE', status: 'DONE', sortOrder: 2 },
+      {
+        id: 'first',
+        title: 'Medication',
+        taskType: 'MEDICATION',
+        scheduledTime: '08:30:00',
+        status: 'SKIPPED',
+        skipReason: 'Server reason',
+        sortOrder: 1,
+      },
+    ],
+  });
+  expect(session.tasks.map((task) => task.id)).toEqual(['first', 'later']);
+  expect(session.tasks[0]).toMatchObject({
+    type: 'MEDICATION',
+    scheduledTime: '08:30:00',
+    skipReason: 'Server reason',
+  });
+  expect(session.done).toBe(1);
+});
+
+test('malformed acknowledged task/note writes remain uncertain', async () => {
+  const repo = new SessionRepository({ request: jest.fn(async () => ({})) });
+  await expect(repo.task('s', 't', 'DONE')).rejects.toMatchObject({ uncertain: true });
+  await expect(repo.addTask('s', 'Additional task')).rejects.toMatchObject({ uncertain: true });
+  await expect(repo.addNote('s', 'Observation', {})).rejects.toMatchObject({ uncertain: true });
 });
 test.each(['start', 'end'] as const)(
   'malformed successful session %s stays uncertain until reconciliation',

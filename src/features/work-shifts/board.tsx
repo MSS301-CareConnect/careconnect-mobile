@@ -1,9 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@react-native-vector-icons/feather/static';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import {
+  NavigationProp,
+  RouteProp,
+  useIsFocused,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Routes } from '../../app/routes';
+import { MainTabs, Routes, ShiftRegistrationView } from '../../app/routes';
 import { useApp } from '../../core/app-context';
 import { useRemote } from '../../core/hooks';
 import { formatInstant } from '../../core/time';
@@ -16,8 +22,10 @@ import {
   Field,
   IconButton,
   Pagination,
+  PageHeader,
   RemoteState,
   Row,
+  Screen,
   Txt,
   colors,
 } from '../../core/ui';
@@ -27,7 +35,7 @@ import { vietnamDay } from '../../core/time';
 import { validDay } from '../availability/time-off';
 import { RegistrationStatus, ShiftSummary } from './card';
 
-type RegistrationView = 'open' | 'pending' | 'approved' | 'history';
+type RegistrationView = ShiftRegistrationView;
 const registrationTabs: { value: RegistrationView; label: string }[] = [
   { value: 'open', label: 'workOpenFilter' },
   { value: 'pending', label: 'workPendingFilter' },
@@ -216,7 +224,7 @@ function OpenShifts({
   refreshOverview,
 }: {
   onOpen: (id: string) => void;
-  refreshOverview: () => Promise<unknown>;
+  refreshOverview?: () => Promise<unknown>;
 }) {
   const { t } = useApp();
   const repo = useRepo();
@@ -253,7 +261,7 @@ function OpenShifts({
           disabled={remote.loading}
           onPress={() => {
             void remote.reload();
-            void refreshOverview();
+            void refreshOverview?.();
           }}
         />
         <Button
@@ -327,10 +335,10 @@ function OpenShifts({
                 }
               />
             )}
-            {items.map(({ shift, registration }) => {
+            {items.map(({ shift }) => {
               const blocked = registrationBlockReason(
                 shift,
-                registration,
+                undefined,
                 board.eligible,
                 board.loadedAt,
               );
@@ -338,38 +346,24 @@ function OpenShifts({
                 <>
                   <ShiftSummary
                     shift={shift}
-                    headerAction={
-                      <DetailsHint onPress={registration ? undefined : () => onOpen(shift.id)} />
-                    }
-                    action={
-                      registration ? (
-                        <Badge status="workShiftAlreadyRegisteredLabel" />
-                      ) : !blocked ? (
-                        <Button
-                          label={t('workShiftRegisterAction')}
-                          onPress={() => onOpen(shift.id)}
-                        />
-                      ) : null
-                    }
+                    headerAction={<DetailsHint onPress={() => onOpen(shift.id)} />}
+                    action={<Badge status="workShift_OPEN" tone="success" />}
                   />
                   {shift.note !== '' && (
                     <Txt muted numberOfLines={2}>
                       {shift.note}
                     </Txt>
                   )}
-                  {!registration && blocked && <Txt muted>{t(blocked)}</Txt>}
+                  {blocked && <Txt muted>{t(blocked)}</Txt>}
+                  <Button
+                    label={t('workShiftRegisterAction')}
+                    icon="edit-3"
+                    disabled={!!blocked || remote.loading || !!remote.error}
+                    onPress={() => onOpen(shift.id)}
+                  />
                 </>
               );
-              return registration ? (
-                <NavigableShiftCard
-                  key={shift.id}
-                  shift={shift}
-                  status={t('workShiftAlreadyRegisteredLabel')}
-                  onOpen={() => onOpen(shift.id)}
-                >
-                  {content}
-                </NavigableShiftCard>
-              ) : (
+              return (
                 <Card key={shift.id} style={styles.card}>
                   {content}
                 </Card>
@@ -503,15 +497,18 @@ export function ShiftRegistrationBoard() {
   const overview = useRemote(useCallback(() => repo.registrationOverview(), [repo]));
   useBoardPolling(overview.reload, overview.loading);
   const [view, setView] = useState<RegistrationView>('open');
+  const route = useRoute<RouteProp<MainTabs, 'Availability'>>();
+  const tabNavigation = useNavigation<NavigationProp<MainTabs, 'Availability'>>();
+  const requestedView = route.params?.registrationView;
+  useEffect(() => {
+    if (!requestedView) return;
+    setView(requestedView);
+    tabNavigation.setParams({ registrationView: undefined });
+  }, [requestedView, tabNavigation]);
   const navigation = useNavigation<NativeStackNavigationProp<Routes>>();
   const onOpen = (id: string) => navigation.navigate('WorkShift', { id });
   return (
     <>
-      <Txt muted>
-        {overview.data?.centerName
-          ? `${t('workRegisterCenter')} ${overview.data.centerName}`
-          : t('workRegisterCenterFallback')}
-      </Txt>
       <Card style={styles.process}>
         {['workRegisterStep', 'workReviewStep', 'workAvailabilityStep'].map((step, index) => (
           <React.Fragment key={step}>
@@ -567,5 +564,16 @@ export function ShiftRegistrationBoard() {
         </>
       )}
     </>
+  );
+}
+
+export function RegisterShiftScreen() {
+  const { t } = useApp();
+  const navigation = useNavigation<NativeStackNavigationProp<Routes>>();
+  return (
+    <Screen>
+      <PageHeader title={t('workChooseShift')} description={t('workChooseShiftHint')} />
+      <OpenShifts onOpen={(id) => navigation.navigate('WorkShift', { id })} />
+    </Screen>
   );
 }

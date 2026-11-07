@@ -1,4 +1,21 @@
 export const shellCopy: Record<string, readonly [string, string]> = {
+  homeStartingSoon: ['Sắp bắt đầu', 'Starting soon'],
+  homeActionNeeded: ['Cần bạn xử lý', 'Needs your attention'],
+  homePendingRequests: [
+    '{count} yêu cầu đặt lịch đang chờ bạn trả lời',
+    '{count} booking requests are waiting for your answer',
+  ],
+  homePendingRequestOne: [
+    '1 yêu cầu đặt lịch đang chờ bạn trả lời',
+    '1 booking request is waiting for your answer',
+  ],
+  homeReply: ['Trả lời', 'Reply'],
+  respond: ['Cần phản hồi', 'Needs response'],
+  responseFromCenter: ['Trung tâm giao', 'Assigned by your center'],
+  responseFromCenterHint: [
+    'Các buổi được trung tâm giao đang chờ bạn xác nhận.',
+    'Visits assigned by your center awaiting your confirmation.',
+  ],
   homeBannerFirst: ['Chăm sóc tận tâm,', 'Thoughtful care,'],
   homeBannerSecond: ['kết nối yêu thương.', 'meaningful connections.'],
   homeEmptyTitle: ['Hôm nay bạn chưa có buổi nào', 'You have no visits today'],

@@ -7,9 +7,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiClient } from '../src/core/api';
 import { AppProvider, useApp } from '../src/core/app-context';
+import { formatInstant } from '../src/core/time';
 import { Routes } from '../src/app/routes';
 import { VisitScreen, VisitsScreen } from '../src/features/visits/screens';
-import { BookingRequestsScreen } from '../src/features/booking-requests/screen';
 const Stack = createNativeStackNavigator<Routes>();
 function Subject() {
   const { user } = useApp();
@@ -27,12 +27,20 @@ function ListSubject() {
     <NavigationContainer>
       <Stack.Navigator>
         <Stack.Screen name="Tabs" component={VisitsScreen} />
-        <Stack.Screen name="BookingRequests" component={BookingRequestsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   ) : null;
 }
-function fixture(failure?: 'network' | 'unpaid') {
+function fixture(
+  failure?: 'network' | 'unpaid',
+  initial: Partial<{
+    status: string;
+    startAt: string;
+    endAt: string;
+    checkInOpensAt: string;
+    checkInClosesAt: string;
+  }> = {},
+) {
   const now = Date.now();
   let visit = {
     id: 'v',
@@ -44,6 +52,7 @@ function fixture(failure?: 'network' | 'unpaid') {
     checkInClosesAt: new Date(now + 9 * 60000).toISOString(),
     status: 'SCHEDULED',
     noShowReportedAt: '',
+    ...initial,
   };
   const writes: { path: string; body: unknown }[] = [];
   const controls = { failure, readFailure: false, commitOnFailure: false };
@@ -70,7 +79,9 @@ function fixture(failure?: 'network' | 'unpaid') {
         }
         if (controls.failure === 'unpaid')
           return new Response(JSON.stringify({ code: 5242 }), { status: 409 });
-        visit = { ...visit, noShowReportedAt: new Date().toISOString() };
+        visit = path.endsWith('/acknowledge')
+          ? { ...visit, status: 'ACKNOWLEDGED' }
+          : { ...visit, noShowReportedAt: new Date().toISOString() };
         result = visit;
       }
       return new Response(JSON.stringify({ code: 200, result }));
@@ -93,7 +104,7 @@ test('started visits hide acknowledgment, validate absence details and await the
   const f = fixture();
   const screen = await open(f);
   try {
-    expect(screen.queryByRole('button', { name: 'Xác nhận nhận ca' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Nhận buổi' })).toBeNull();
     expect(screen.getByText('Check-in đóng lúc')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Báo khách vắng mặt' }));
     await fireEvent.changeText(screen.getByLabelText('Mô tả khách vắng mặt'), 'short');
@@ -147,8 +158,41 @@ test('unknown absence write retains the note and requires refresh even after mod
     await screen.unmount();
   }
 });
+test('accepting a future visit reveals a disabled opens-at action, with no care-session write', async () => {
+  const now = Date.now();
+  const opens = new Date(now + 90 * 60000).toISOString();
+  const f = fixture(undefined, {
+    startAt: new Date(now + 120 * 60000).toISOString(),
+    endAt: new Date(now + 240 * 60000).toISOString(),
+    checkInOpensAt: opens,
+    checkInClosesAt: new Date(now + 150 * 60000).toISOString(),
+  });
+  const screen = await open(f);
+  try {
+    expect(screen.queryByRole('button', { name: 'Bắt đầu chăm sóc' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Mở lúc/ })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Nhận buổi' }));
+    const label =
+      'Mở lúc ' +
+      formatInstant(opens, 'vi', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZone: 'Asia/Ho_Chi_Minh',
+      });
+    const button = await screen.findByRole('button', { name: label });
+    expect(button).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Nhận buổi' })).toBeNull();
+    expect(f.writes).toEqual([{ path: '/booking-occurrences/v/acknowledge', body: undefined }]);
+    await fireEvent.press(button);
+    expect(f.writes).toHaveLength(1);
+  } finally {
+    await screen.unmount();
+  }
+});
+
 test('unpaid care start gives actionable payment guidance without a simulated session', async () => {
-  const f = fixture('unpaid');
+  const f = fixture('unpaid', { status: 'ACKNOWLEDGED' });
   const screen = await open(f);
   try {
     await fireEvent.press(screen.getByRole('button', { name: 'Bắt đầu chăm sóc' }));
@@ -188,7 +232,7 @@ test('failed reconciliation keeps the absence note and uncertain latch until a s
     await screen.unmount();
   }
 });
-test('assigned visits provides a separate customer-request destination', async () => {
+test('assigned visits embeds customer requests only in the response tab', async () => {
   const f = fixture();
   const screen = await render(
     <SafeAreaProvider>
@@ -198,7 +242,8 @@ test('assigned visits provides a separate customer-request destination', async (
     </SafeAreaProvider>,
   );
   try {
-    await fireEvent.press(await screen.findByRole('button', { name: 'Yêu cầu từ khách' }));
+    expect(screen.queryByRole('button', { name: 'Yêu cầu từ khách' })).toBeNull();
+    await fireEvent.press(await screen.findByRole('tab', { name: 'Cần phản hồi' }));
     await screen.findByText('Không có yêu cầu đang chờ trả lời.');
     expect(
       screen.getByText('Khách hàng đã chọn bạn. Trả lời trước hạn để khách tiếp tục thanh toán.'),

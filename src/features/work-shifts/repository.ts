@@ -7,6 +7,7 @@ import {
   parseWorkShift,
   Registration,
   registrationShift,
+  WorkShift,
 } from './models';
 
 export type ShiftFilters = {
@@ -43,37 +44,95 @@ export class WorkShiftRepository {
       parseRegistration,
     );
   }
-  async mine(p = 0, status?: 'PENDING' | 'APPROVED') {
-    const registrations = await this.registrations(p, 20, status);
+  private async registrationRows() {
+    const registrations = await this.allRegistrations();
     const ids = [
-      ...new Set(
-        registrations.items.filter((r) => !registrationShift(r)).map((r) => r.workShiftId),
-      ),
+      ...new Set(registrations.filter((r) => !registrationShift(r)).map((r) => r.workShiftId)),
     ];
     const shifts = new Map(
       await Promise.all(
         ids.map(async (id) => [id, await this.shift(id).catch(() => undefined)] as const),
       ),
     );
+    return registrations.map((registration) => ({
+      registration,
+      shift: registrationShift(registration) ?? shifts.get(registration.workShiftId),
+    }));
+  }
+  private upcomingRegistration(
+    row: { shift?: { workDate: string; startTime: string } },
+    now: number,
+  ) {
+    return !!row.shift && Date.parse(`${row.shift.workDate}T${row.shift.startTime}+07:00`) > now;
+  }
+  private paginate<T>(items: T[], p: number) {
+    if (!Number.isSafeInteger(p) || p < 0) throw new Error('Invalid registration page');
     return {
-      ...registrations,
-      items: registrations.items.map((registration) => ({
-        registration,
-        shift: registrationShift(registration) ?? shifts.get(registration.workShiftId),
-      })),
+      items: items.slice(p * 20, (p + 1) * 20),
+      page: p,
+      totalPages: Math.ceil(items.length / 20),
+      totalElements: items.length,
     };
   }
-  async registrationOverview() {
-    const [open, pending, approved, profile] = await Promise.all([
-      this.open(0, 1, { fromDate: vietnamDay() }),
-      this.registrations(0, 1, 'PENDING'),
-      this.registrations(0, 1, 'APPROVED'),
+  async mine(p = 0, status?: 'PENDING' | 'APPROVED', now = Date.now()) {
+    const rows = (await this.registrationRows()).filter((row) => {
+      const upcoming = this.upcomingRegistration(row, now);
+      return status
+        ? row.registration.status === status && upcoming
+        : !hasActiveRegistration(row.registration) || !upcoming;
+    });
+    if (status)
+      rows.sort((a, b) =>
+        `${a.shift?.workDate}${a.shift?.startTime}`.localeCompare(
+          `${b.shift?.workDate}${b.shift?.startTime}`,
+        ),
+      );
+    return this.paginate(rows, p);
+  }
+  private async availableOpenShifts(
+    registrations: Registration[],
+    now: number,
+    filters: ShiftFilters = {},
+  ) {
+    const active = new Set(
+      registrations.filter(hasActiveRegistration).map((item) => item.workShiftId),
+    );
+    const items: WorkShift[] = [];
+    // Filter the entire server result before paginating, so registered rows cannot hide candidates.
+    for (let p = 0; ; p++) {
+      const result = await this.open(p, 100, { fromDate: vietnamDay(new Date(now)), ...filters });
+      items.push(
+        ...result.items.filter(
+          (shift) =>
+            shift.status === 'OPEN' &&
+            !active.has(shift.id) &&
+            Date.parse(`${shift.workDate}T${shift.startTime}+07:00`) > now &&
+            (!shift.registrationDeadline || Date.parse(shift.registrationDeadline) > now),
+        ),
+      );
+      if (p + 1 >= result.totalPages) break;
+    }
+    return items.sort((a, b) =>
+      `${a.workDate}${a.startTime}`.localeCompare(`${b.workDate}${b.startTime}`),
+    );
+  }
+  async registrationOverview(now = Date.now()) {
+    const [rows, profile] = await Promise.all([
+      this.registrationRows(),
       this.api.request('GET', '/caregivers/me'),
     ]);
+    const open = await this.availableOpenShifts(
+      rows.map((row) => row.registration),
+      now,
+    );
     return {
-      open: open.totalElements,
-      pending: pending.totalElements,
-      approved: approved.totalElements,
+      open: open.length,
+      pending: rows.filter(
+        (row) => row.registration.status === 'PENDING' && this.upcomingRegistration(row, now),
+      ).length,
+      approved: rows.filter(
+        (row) => row.registration.status === 'APPROVED' && this.upcomingRegistration(row, now),
+      ).length,
       centerName: text(object(profile).centerName),
     };
   }
@@ -90,15 +149,12 @@ export class WorkShiftRepository {
     return matches.find(hasActiveRegistration) ?? matches[0];
   }
   async board(now = Date.now(), p = 0, filters: ShiftFilters = {}) {
-    const [shifts, registrations, profile] = await Promise.all([
-      this.open(p, 20, { fromDate: vietnamDay(new Date(now)), ...filters }),
+    const [registrations, profile] = await Promise.all([
       this.allRegistrations(),
       this.api.request('GET', '/caregivers/me'),
     ]);
     const j = object(profile);
-    const active = new Map(
-      registrations.filter(hasActiveRegistration).map((r) => [r.workShiftId, r]),
-    );
+    const shifts = this.paginate(await this.availableOpenShifts(registrations, now, filters), p);
     return {
       ...shifts,
       centerName: text(j.centerName),
@@ -107,7 +163,7 @@ export class WorkShiftRepository {
         required(j.caregiverStatus) === 'ACTIVE' &&
         required(j.verificationStatus) === 'VERIFIED' &&
         (!j.centerStatus || j.centerStatus === 'ACTIVE'),
-      items: shifts.items.map((shift) => ({ shift, registration: active.get(shift.id) })),
+      items: shifts.items.map((shift) => ({ shift })),
     };
   }
   async detail(id: string) {

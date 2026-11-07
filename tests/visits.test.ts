@@ -1,7 +1,12 @@
 import { expect, jest, test } from '@jest/globals';
 import { parseVisit } from '../src/features/visits/models';
 import { VisitRepository } from '../src/features/visits/repository';
-import { canAcknowledge, canReportNoShow, visitErrorKey } from '../src/features/visits/actions';
+import {
+  canAcknowledge,
+  canReportNoShow,
+  careStartStep,
+  visitErrorKey,
+} from '../src/features/visits/actions';
 import { ApiError } from '../src/core/api';
 const json = {
   id: 'v',
@@ -11,6 +16,20 @@ const json = {
   checkInClosesAt: '2030-01-01T01:10:00Z',
   status: 'SCHEDULED',
 };
+test('care start is hidden until acknowledged and obeys the server window and exclusive end', () => {
+  const opens = '2030-01-01T00:45:00Z';
+  const visit = parseVisit({ ...json, checkInOpensAt: opens });
+  expect(careStartStep(visit, Date.parse(opens))).toBe('none');
+  const acknowledged = { ...visit, status: 'ACKNOWLEDGED' };
+  expect(careStartStep(acknowledged, Date.parse(opens) - 1)).toBe('waiting');
+  expect(careStartStep(acknowledged, Date.parse(opens))).toBe('ready');
+  expect(careStartStep(acknowledged, Date.parse(json.checkInClosesAt))).toBe('none');
+  expect(careStartStep({ ...acknowledged, endAt: opens }, Date.parse(opens))).toBe('none');
+  expect(careStartStep({ ...acknowledged, sessionId: 'session' }, Date.parse(opens))).toBe('none');
+  expect(careStartStep({ ...acknowledged, noShowReportedAt: opens }, Date.parse(opens))).toBe(
+    'none',
+  );
+});
 test('no-show uses the captured server window and acknowledgment stops exactly at start', () => {
   const visit = parseVisit(json);
   expect(canAcknowledge(visit, Date.parse('2030-01-01T00:59:59Z'))).toBe(true);

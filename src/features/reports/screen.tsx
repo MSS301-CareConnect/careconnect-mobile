@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Linking, View } from 'react-native';
+// @refresh reset
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
 import { pickDocuments } from '../../core/documents';
 import { useApp } from '../../core/app-context';
 import { useDirty, useRemote, useWrite } from '../../core/hooks';
@@ -7,28 +8,45 @@ import { Props } from '../../app/routes';
 import {
   Badge,
   Button,
-  Chips,
+  Card,
   ErrorBox,
   Field,
   RemoteState,
   Screen,
-  Section,
-  Title,
   Txt,
   colors,
   confirm,
 } from '../../core/ui';
 import { SessionRepository } from '../sessions/repository';
-import { Report, ReportPhotoInput, conditions, emptyReport, reportFields } from './models';
+import { Report, ReportPhotoInput, emptyReport, reportFields } from './models';
 import { ReportRepository } from './repository';
+import { ConditionField } from './condition-field';
 function signature(r: Report) {
   return JSON.stringify([r.overallCondition, ...reportFields.map((k) => r[k])]);
 }
 export function ReportScreen({ route }: Props<'Report'>) {
+  return (
+    <Screen>
+      <ReportContent {...route.params} />
+    </Screen>
+  );
+}
+export function ReportContent({
+  sessionId,
+  bookingId,
+  sessionStatus,
+  externalLocked = false,
+  onStateChange,
+}: {
+  sessionId: string;
+  bookingId: string;
+  sessionStatus?: string;
+  externalLocked?: boolean;
+  onStateChange?: (state: { locked: boolean; busy: boolean; dirty: boolean }) => void;
+}) {
   const { api, t } = useApp();
   const repo = useMemo(() => new ReportRepository(api), [api]);
   const care = useMemo(() => new SessionRepository(api), [api]);
-  const { sessionId, bookingId } = route.params;
   const remote = useRemote(
     useCallback(
       async () => ({
@@ -47,12 +65,18 @@ export function ReportScreen({ route }: Props<'Report'>) {
   const [pendingPhotos, setPendingPhotos] = useState<ReportPhotoInput[]>([]);
   const [photoError, setPhotoError] = useState('');
   const [reviewPhotos, setReviewPhotos] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const confirmation = useRef(false);
   const operation = useRef<'save' | 'upload' | 'submit' | 'saved' | 'remove' | undefined>(
     undefined,
   );
   const dirty =
     signature(report) !== (baseline ?? signature(remote.data?.report ?? emptyReport(sessionId)));
-  useDirty(dirty || pendingPhotos.length > 0, write.busy || picker.busy);
+  // The embedded editor shares its route guard with session task/note drafts.
+  useDirty(
+    !onStateChange && (dirty || pendingPhotos.length > 0),
+    !onStateChange && (write.busy || picker.busy || confirming),
+  );
   const apply = useCallback((value: Report) => {
     setReport(value);
     setBaseline(signature(value));
@@ -83,7 +107,31 @@ export function ReportScreen({ route }: Props<'Report'>) {
     }
   }
   const submitted = report.status === 'SUBMITTED';
-  const locked = submitted || write.busy || write.uncertain || picker.busy || remote.loading;
+  const locked =
+    submitted ||
+    externalLocked ||
+    write.busy ||
+    write.uncertain ||
+    picker.busy ||
+    remote.loading ||
+    !!remote.error ||
+    confirming;
+  const currentSessionStatus = sessionStatus ?? remote.data?.session.status;
+  useEffect(() => {
+    onStateChange?.({
+      locked: write.busy || write.uncertain || picker.busy || confirming,
+      busy: write.busy || picker.busy || confirming,
+      dirty: dirty || pendingPhotos.length > 0,
+    });
+  }, [
+    onStateChange,
+    write.busy,
+    write.uncertain,
+    picker.busy,
+    confirming,
+    dirty,
+    pendingPhotos.length,
+  ]);
   const needsPhotoReview = reviewPhotos && pendingPhotos.length > 0;
   async function persist() {
     operation.current = 'save';
@@ -98,8 +146,18 @@ export function ReportScreen({ route }: Props<'Report'>) {
     await write.run(persist);
   }
   async function submit() {
-    if (locked || needsPhotoReview) return;
-    if (!(await confirm(t('submitQuestion'), t('submitHint'), t('submit'), t('cancel')))) return;
+    if (locked || needsPhotoReview || currentSessionStatus !== 'ENDED' || confirmation.current)
+      return;
+    confirmation.current = true;
+    setConfirming(true);
+    let accepted = false;
+    try {
+      accepted = await confirm(t('submitQuestion'), t('submitHint'), t('submit'), t('cancel'));
+    } finally {
+      confirmation.current = false;
+      setConfirming(false);
+    }
+    if (!accepted) return;
     await write.run(
       async () => {
         const saved = await persist();
@@ -110,6 +168,7 @@ export function ReportScreen({ route }: Props<'Report'>) {
     );
   }
   async function photos() {
+    if (locked || needsPhotoReview) return;
     setPhotoError('');
     await picker.run(async () => {
       const picked = await pickDocuments({
@@ -130,15 +189,23 @@ export function ReportScreen({ route }: Props<'Report'>) {
     });
   }
   return (
-    <Screen>
-      <Title>{t('report')}</Title>
-      <Txt muted>{t('reportHint')}</Txt>
-      <RemoteState {...remote} loading={remote.loading && !remote.data} retry={remote.reload}>
+    <Card style={styles.card}>
+      <Txt accessibilityRole="header" style={styles.title}>
+        {t('report')}
+      </Txt>
+      <Txt muted>{t(submitted ? 'careReportSubmitted' : 'careReportDraftHint')}</Txt>
+      {initialized && <ErrorBox error={remote.error} retry={reconcile} />}
+      <RemoteState
+        {...remote}
+        error={remote.data ? undefined : remote.error}
+        loading={remote.loading && !remote.data}
+        retry={reconcile}
+      >
         {initialized && (
           <>
             <Badge status={report.status} />
             {submitted ? (
-              <Section title={t('submitted')} icon="check-circle">
+              <View style={styles.fields}>
                 <Txt>{t(report.overallCondition)}</Txt>
                 {reportFields.map((key) =>
                   report[key] ? (
@@ -148,20 +215,17 @@ export function ReportScreen({ route }: Props<'Report'>) {
                     </View>
                   ) : null,
                 )}
-              </Section>
+              </View>
             ) : (
               <>
-                <Section title={t('overallCondition')} icon="activity">
-                  <Chips
-                    values={conditions.map((value) => ({ value, label: t(value) }))}
-                    value={report.overallCondition}
-                    onChange={(value) => {
-                      if (!locked) setReport({ ...report, overallCondition: value });
-                    }}
-                  />
-                  {!report.overallCondition && <Txt muted>{t('chooseCondition')}</Txt>}
-                </Section>
-                <Section title={t('reportContent')} icon="file-text">
+                <ConditionField
+                  value={report.overallCondition}
+                  disabled={locked}
+                  onChange={(value) => {
+                    if (!locked) setReport({ ...report, overallCondition: value });
+                  }}
+                />
+                <View style={styles.fields}>
                   {(['summary', 'recommendations'] as const).map((key) => (
                     <Field
                       key={key}
@@ -174,10 +238,13 @@ export function ReportScreen({ route }: Props<'Report'>) {
                       style={{ minHeight: key === 'summary' ? 132 : 88 }}
                     />
                   ))}
-                </Section>
+                </View>
               </>
             )}
-            <Section title={t('photos')} icon="image">
+            <View style={styles.attachments}>
+              <Txt accessibilityRole="header" style={styles.title}>
+                {t('photos')}
+              </Txt>
               <Txt muted>{t('photoHint')}</Txt>
               <Txt muted>{`${report.photos.length + pendingPhotos.length}/5`}</Txt>
               {report.photos.map((photo) => (
@@ -244,36 +311,55 @@ export function ReportScreen({ route }: Props<'Report'>) {
                   onPress={() => void photos()}
                 />
               )}
-            </Section>
+            </View>
             <ErrorBox error={write.error} retry={reconcile} />
             {!submitted && (
               <>
-                <Button
-                  label={t('saveDraft')}
-                  disabled={
-                    locked || needsPhotoReview || !report.overallCondition || !report.summary.trim()
-                  }
-                  loading={write.busy}
-                  onPress={() => void save()}
-                />
-                {remote.data?.session.status !== 'ENDED' && <Txt muted>{t('endFirst')}</Txt>}
-                <Button
-                  label={t('submit')}
-                  disabled={
-                    locked ||
-                    needsPhotoReview ||
-                    !report.overallCondition ||
-                    !report.summary.trim() ||
-                    remote.data?.session.status !== 'ENDED'
-                  }
-                  loading={write.busy}
-                  onPress={() => void submit()}
-                />
+                {currentSessionStatus !== 'ENDED' && <Txt muted>{t('endFirst')}</Txt>}
+                <View style={styles.actions}>
+                  <View style={styles.action}>
+                    <Button
+                      label={t('saveDraft')}
+                      kind="secondary"
+                      disabled={
+                        locked ||
+                        needsPhotoReview ||
+                        !report.overallCondition ||
+                        !report.summary.trim()
+                      }
+                      loading={write.busy}
+                      onPress={() => void save()}
+                    />
+                  </View>
+                  <View style={styles.action}>
+                    <Button
+                      label={t('submit')}
+                      disabled={
+                        locked ||
+                        needsPhotoReview ||
+                        !report.overallCondition ||
+                        !report.summary.trim() ||
+                        currentSessionStatus !== 'ENDED'
+                      }
+                      loading={write.busy}
+                      onPress={() => void submit()}
+                    />
+                  </View>
+                </View>
               </>
             )}
           </>
         )}
       </RemoteState>
-    </Screen>
+    </Card>
   );
 }
+
+const styles = StyleSheet.create({
+  card: { padding: 16, gap: 16 },
+  title: { fontSize: 18, lineHeight: 26, fontWeight: '700' },
+  fields: { gap: 16 },
+  attachments: { gap: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.line },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  action: { flexGrow: 1, flexBasis: 180, minWidth: 0 },
+});

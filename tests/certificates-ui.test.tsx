@@ -207,6 +207,7 @@ test('an uncertain create has no correlation ID and stays blocked after a fresh 
   const screen = await open(f);
   try {
     await newForm(screen);
+    await selectFile(screen);
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu chứng chỉ' }));
     await screen.findByText(/Không xác định được chứng chỉ vừa tạo/);
     await fireEvent.press(screen.getByRole('button', { name: 'Tải lại chứng chỉ' }));
@@ -278,6 +279,7 @@ test('dirty close requires discard confirmation and a pending save locks fields 
   const screen = await open(f);
   try {
     await newForm(screen);
+    await selectFile(screen);
     await fireEvent.press(screen.getByRole('button', { name: 'Đóng biểu mẫu chứng chỉ' }));
     expect(screen.getByDisplayValue('New certificate')).toBeTruthy();
     expect(alert).toHaveBeenCalled();
@@ -319,8 +321,11 @@ test('invalid certificate files make no writes and equal issue/expiry dates rema
     expect(f.writes()).toHaveLength(0);
     await fireEvent.changeText(screen.getByLabelText('Ngày cấp'), '2026-11-05');
     await fireEvent.changeText(screen.getByLabelText('Ngày hết hạn'), '2026-11-04');
-    expect(screen.getByRole('button', { name: 'Lưu chứng chỉ' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Lưu chứng chỉ' }));
+    expect(screen.getByText('Ngày hết hạn không được trước ngày cấp.')).toBeTruthy();
+    expect(f.writes()).toHaveLength(0);
     await fireEvent.changeText(screen.getByLabelText('Ngày hết hạn'), '2026-11-05');
+    await selectFile(screen);
     await fireEvent.press(screen.getByRole('button', { name: 'Lưu chứng chỉ' }));
     await waitFor(() => expect(screen.queryByDisplayValue('New certificate')).toBeNull());
     expect(f.writes()[0]?.body).toMatchObject({

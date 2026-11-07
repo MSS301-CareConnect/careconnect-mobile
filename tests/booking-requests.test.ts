@@ -22,10 +22,16 @@ test('request parsing keeps the privacy-limited preview and uses the exclusive s
   const request = parseBookingRequest({
     ...record,
     recipientSnapshot: { fullName: 'Hidden' },
+    recipientName: 'Preview recipient',
+    customerName: 'Preview customer',
+    allergies: 'Server-provided allergy note',
     customerPhone: 'Hidden',
   });
   expect(request).not.toHaveProperty('recipientSnapshot');
   expect(request).not.toHaveProperty('customerPhone');
+  expect(request.recipientName).toBe('Preview recipient');
+  expect(request.customerName).toBe('Preview customer');
+  expect(request.allergies).toBe('Server-provided allergy note');
   expect(request.occurrences[0]?.id).toBe('visit');
   expect(canAnswerRequest(request, Date.parse('2030-01-02T00:59:59Z'))).toBe(true);
   expect(canAnswerRequest(request, Date.parse('2030-01-02T01:00:00Z'))).toBe(false);

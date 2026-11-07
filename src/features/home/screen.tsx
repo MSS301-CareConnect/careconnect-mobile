@@ -22,10 +22,12 @@ import {
 import { VisitRepository } from '../visits/repository';
 import { VisitCard } from '../visits/card';
 import { CareBanner } from './care-banner';
+import { useBookingRequestCount } from '../booking-requests/use-request-count';
 
 export function HomeScreen() {
   const { api, t, user, locale } = useApp();
   const repo = useMemo(() => new VisitRepository(api), [api]);
+  const requests = useBookingRequestCount();
   const day = useDay();
   const previousDay = useRef(day);
   const [p, setPage] = useState(0);
@@ -91,9 +93,46 @@ export function HomeScreen() {
         ))}
       </View>
 
+      {(requests.data === undefined && requests.loading) ||
+      requests.error ||
+      (requests.data ?? 0) > 0 ? (
+        <Card style={styles.attentionCard}>
+          <Txt accessibilityRole="header" style={styles.attentionTitle}>
+            {t('homeActionNeeded')}
+          </Txt>
+          {requests.error ? (
+            <ErrorBox error={requests.error} retry={requests.reload} />
+          ) : requests.data === undefined ? (
+            <Txt muted>{t('loading')}</Txt>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                nav.navigate('Tabs', { screen: 'Schedule', params: { range: 'respond' } })
+              }
+              style={({ pressed }) => [styles.attentionRow, pressed && styles.pressed]}
+            >
+              <View style={styles.attentionIcon}>
+                <Feather name="clipboard" size={22} color={colors.warning} accessible={false} />
+              </View>
+              <Txt accessibilityLiveRegion="polite" style={styles.attentionText}>
+                {t(requests.data === 1 ? 'homePendingRequestOne' : 'homePendingRequests').replace(
+                  '{count}',
+                  String(requests.data),
+                )}
+              </Txt>
+              <View style={styles.reply}>
+                <Txt style={styles.viewAllText}>{t('homeReply')}</Txt>
+                <Feather name="chevron-right" size={18} color={colors.primary} accessible={false} />
+              </View>
+            </Pressable>
+          )}
+        </Card>
+      ) : null}
+
       <View style={styles.scheduleHeading}>
         <Txt accessibilityRole="header" style={styles.sectionTitle}>
-          {t('todaySchedule')}
+          {t('homeStartingSoon')}
         </Txt>
         <Pressable
           accessibilityRole="button"
@@ -158,6 +197,30 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { gap: 16, paddingTop: 12 },
+  attentionCard: { padding: 14, gap: 10 },
+  attentionTitle: { fontSize: 17, lineHeight: 25, fontWeight: '700' },
+  attentionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 64,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.bg,
+    padding: 12,
+  },
+  attentionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.warningBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attentionText: { flex: 1, minWidth: 140, fontSize: 16, lineHeight: 24, fontWeight: '600' },
+  reply: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   greeting: { gap: 4 },
   title: { fontSize: 24, lineHeight: 32, fontWeight: '800', letterSpacing: -0.4 },
   date: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },

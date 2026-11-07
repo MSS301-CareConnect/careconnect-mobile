@@ -167,7 +167,7 @@ async function open(f: ReturnType<typeof fixture>) {
               >
                 <Stack.Screen name="Notifications" component={NotificationsScreen} />
                 <Stack.Screen name="Visit" component={Destination} />
-                <Stack.Screen name="BookingRequests" component={Destination} />
+                <Stack.Screen name="Tabs" component={Destination} />
                 <Stack.Screen name="Session" component={Destination} />
                 <Stack.Screen name="Report" component={Destination} />
               </Stack.Navigator>
@@ -338,8 +338,8 @@ test.each([
     type: 'CAREGIVER_REQUEST',
     refType: 'BOOKING',
     refId: bookingId,
-    expectedScreen: 'BookingRequests',
-    expectedParams: { bookingId },
+    expectedScreen: 'Tabs',
+    expectedParams: { screen: 'Schedule', params: { range: 'respond', bookingId } },
   },
   {
     type: 'BOOKING_CANCELLED',

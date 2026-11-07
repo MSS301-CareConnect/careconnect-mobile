@@ -1,6 +1,6 @@
 import { ApiClient, ApiError } from '../../core/api';
 import { page } from '../../core/json';
-import { parseSession, parseNote } from './models';
+import { parseSession, parseNote, parseTask } from './models';
 export class SessionRepository {
   constructor(private api: Pick<ApiClient, 'request'>) {}
   private parseWrite(value: unknown) {
@@ -19,15 +19,33 @@ export class SessionRepository {
     return parseSession(await this.api.request('GET', `/care-sessions/${id}`));
   }
   async task(id: string, taskId: string, status: string, reason = '') {
-    if (status === 'SKIPPED' && !reason.trim()) throw new Error('Skip reason required');
-    return this.api.request('PATCH', `/care-sessions/${id}/tasks/${taskId}`, {
+    if (
+      !['PENDING', 'DONE', 'SKIPPED'].includes(status) ||
+      (status === 'SKIPPED' && (!reason.trim() || reason.trim().length > 500))
+    )
+      throw new Error('Invalid task update');
+    const result = await this.api.request('PATCH', `/care-sessions/${id}/tasks/${taskId}`, {
       status,
       ...(status === 'SKIPPED' ? { skipReason: reason.trim() } : {}),
     });
+    try {
+      const task = parseTask(result);
+      if (task.id !== taskId || task.status !== status) throw new Error('Invalid task response');
+      return task;
+    } catch {
+      throw new ApiError(0, 0, true);
+    }
   }
   async addTask(id: string, title: string) {
     if (!title.trim() || title.length > 200) throw new Error('Invalid task');
-    return this.api.request('POST', `/care-sessions/${id}/tasks`, { title: title.trim() });
+    const result = await this.api.request('POST', `/care-sessions/${id}/tasks`, {
+      title: title.trim(),
+    });
+    try {
+      return parseTask(result);
+    } catch {
+      throw new ApiError(0, 0, true);
+    }
   }
   async notes(id: string, p = 0) {
     return page(
@@ -37,10 +55,15 @@ export class SessionRepository {
   }
   async addNote(id: string, content: string, vitals: Record<string, number>) {
     if (!content.trim() || content.length > 2000) throw new Error('Invalid note');
-    return this.api.request('POST', `/care-sessions/${id}/notes`, {
+    const result = await this.api.request('POST', `/care-sessions/${id}/notes`, {
       content: content.trim(),
       ...(Object.keys(vitals).length ? { vitals } : {}),
     });
+    try {
+      return parseNote(result);
+    } catch {
+      throw new ApiError(0, 0, true);
+    }
   }
   async end(id: string, coordinates: { latitude?: number; longitude?: number }) {
     return this.parseWrite(await this.api.request('POST', `/care-sessions/${id}/end`, coordinates));

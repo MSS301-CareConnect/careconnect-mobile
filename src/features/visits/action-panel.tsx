@@ -6,7 +6,7 @@ import { useApp } from '../../core/app-context';
 import { useReducedMotion } from '../../core/accessibility';
 import { optionalCoordinates } from '../../core/device';
 import { useDirty, useWrite } from '../../core/hooks';
-import { checkInAllowed, formatInstant } from '../../core/time';
+import { formatInstant } from '../../core/time';
 import {
   Button,
   ErrorBox,
@@ -24,6 +24,7 @@ import {
 import { SessionRepository } from '../sessions/repository';
 import {
   canAcknowledge,
+  careStartStep,
   canReportNoShow,
   visitErrorKey,
   visitWindow,
@@ -66,6 +67,7 @@ export function VisitActionPanel({
   }, []);
   const current = checkpoint ?? visit;
   const window = visitWindow(current);
+  const startStep = careStartStep(current, now);
   const waiting = waitingForNoShow(current);
   const editable =
     ['SCHEDULED', 'ACKNOWLEDGED'].includes(current.status) && !current.sessionId && !waiting;
@@ -163,28 +165,33 @@ export function VisitActionPanel({
                   }}
                 />
               )}
-              <Button
-                label={t('start')}
-                icon="play"
-                loading={write.busy}
-                disabled={
-                  write.uncertain ||
-                  reading ||
-                  !checkInAllowed(
-                    current.startAt,
-                    current.endAt,
-                    now,
-                    current.checkInOpensAt,
-                    current.checkInClosesAt,
-                  )
-                }
-                onPress={() => {
-                  write.run(
-                    async () => sessions.start(current.id, await optionalCoordinates()),
-                    (session) => navigation.navigate('Session', { id: session.id }),
-                  );
-                }}
-              />
+              {startStep !== 'none' && (
+                <Button
+                  label={
+                    startStep === 'waiting'
+                      ? t('visitStartOpensAt').replace(
+                          '{time}',
+                          formatInstant(new Date(window.opens).toISOString(), locale, {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hourCycle: 'h23',
+                            timeZone: 'Asia/Ho_Chi_Minh',
+                          }),
+                        )
+                      : t('start')
+                  }
+                  icon="play"
+                  loading={write.busy}
+                  disabled={write.uncertain || reading || startStep !== 'ready'}
+                  onPress={() => {
+                    if (careStartStep(current, Date.now()) !== 'ready') return;
+                    write.run(
+                      async () => sessions.start(current.id, await optionalCoordinates()),
+                      (session) => navigation.navigate('Session', { id: session.id }),
+                    );
+                  }}
+                />
+              )}
               {canReportNoShow(current, now) && (
                 <Button
                   label={t('noShowReport')}

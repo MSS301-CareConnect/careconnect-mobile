@@ -3,6 +3,7 @@ import { workCopy } from './copy/work';
 import { notificationCopy } from './copy/notifications';
 import { profileCopy } from './copy/profile';
 import { shellCopy } from './copy/shell';
+import { recipientCopy } from './copy/recipient';
 
 export const copy = {
   app: ['CareConnect', 'CareConnect'],
@@ -130,19 +131,19 @@ export const copy = {
   gender: ['Giới tính', 'Gender'],
   dateOfBirth: ['Ngày sinh', 'Date of birth'],
   call: ['Gọi liên hệ', 'Call contact'],
-  acknowledge: ['Xác nhận nhận ca', 'Accept visit'],
+  acknowledge: ['Nhận buổi', 'Accept visit'],
   start: ['Bắt đầu chăm sóc', 'Start care'],
   checkWindow: [
     'Có thể bắt đầu trong khung giờ check-in do trung tâm đặt quanh giờ hẹn, trước giờ kết thúc. Máy chủ xác nhận thời gian hợp lệ.',
     'Start within the check-in window your center set around the appointment, before its end. The server validates the time.',
   ],
   viewSession: ['Mở ca chăm sóc', 'Open care session'],
-  activeCare: ['Đang chăm sóc', 'Care in progress'],
+  activeCare: ['Đang diễn ra', 'In progress'],
   checklist: ['Công việc chăm sóc', 'Care checklist'],
   progress: ['công việc đã hoàn thành', 'tasks completed'],
   done: ['Hoàn thành', 'Done'],
   skip: ['Bỏ qua', 'Skip'],
-  undo: ['Chưa thực hiện', 'Mark pending'],
+  undo: ['Hoàn tác', 'Undo'],
   skipReason: ['Lý do bỏ qua', 'Reason for skipping'],
   customTask: ['Công việc bổ sung', 'Additional task'],
   addTask: ['Thêm công việc', 'Add task'],
@@ -168,7 +169,7 @@ export const copy = {
     'Ghi nhận trung thực tình trạng và công việc đã thực hiện.',
     'Record the recipient’s condition and care provided accurately.',
   ],
-  overallCondition: ['Tình trạng tổng quát', 'Overall condition'],
+  overallCondition: ['Tình trạng chung', 'Overall condition'],
   chooseCondition: ['Chọn tình trạng', 'Choose condition'],
   reportContent: ['Nội dung báo cáo', 'Report content'],
   summary: ['Tóm tắt buổi chăm sóc', 'Visit summary'],
@@ -362,7 +363,7 @@ export const copy = {
   noTasks: ['Chưa có công việc được giao', 'No assigned tasks yet'],
   SCHEDULED: ['Đã phân công', 'Scheduled'],
   ACKNOWLEDGED: ['Đã nhận ca', 'Acknowledged'],
-  IN_PROGRESS: ['Đang chăm sóc', 'In progress'],
+  IN_PROGRESS: ['Đang diễn ra', 'In progress'],
   COMPLETED: ['Đã hoàn thành', 'Completed'],
   CANCELLED: ['Đã hủy', 'Cancelled'],
   CAREGIVER_MISSED: ['Người chăm sóc vắng', 'Caregiver missed'],
@@ -394,6 +395,7 @@ export const copy = {
   ...notificationCopy,
   ...profileCopy,
   ...shellCopy,
+  ...recipientCopy,
 } as const;
 export type Locale = 'vi' | 'en';
 export function translate(locale: Locale, key: string): string {

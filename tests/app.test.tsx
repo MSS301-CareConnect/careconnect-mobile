@@ -66,7 +66,7 @@ test.each(['SCHEDULED', 'IN_PROGRESS', 'COMPLETED'])(
     const screen = await render(<App client={api} />);
     try {
       await fireEvent.press(await screen.findByText('Test Recipient'));
-      await screen.findByText(hasSession ? 'Mở ca chăm sóc' : 'Xác nhận nhận ca');
+      await screen.findByText(hasSession ? 'Mở ca chăm sóc' : 'Nhận buổi');
       if (hasSession) {
         await fireEvent.press(screen.getByText('Mở ca chăm sóc'));
         await screen.findByText('Test task 0');
@@ -147,12 +147,12 @@ test('failed note write keeps form and blocks repeat until server reconciliation
   await screen.findByText('Test Recipient');
   await fireEvent.press(screen.getByText('Test Recipient'));
   await fireEvent.press(await screen.findByText('Mở ca chăm sóc'));
-  await screen.findByLabelText('Nội dung ghi chú');
-  await fireEvent.changeText(screen.getByLabelText('Nội dung ghi chú'), 'Retain this note');
-  await fireEvent.press(screen.getByRole('button', { name: 'Lưu ghi chú' }));
+  await screen.findByLabelText('Ghi chú mới');
+  await fireEvent.changeText(screen.getByLabelText('Ghi chú mới'), 'Retain this note');
+  await fireEvent.press(screen.getByRole('button', { name: 'Thêm ghi chú' }));
   await screen.findByText(/Chưa xác định được kết quả/);
   expect(screen.getByDisplayValue('Retain this note')).toBeTruthy();
-  await fireEvent.press(screen.getByRole('button', { name: 'Lưu ghi chú' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Thêm ghi chú' }));
   expect(writes).toBe(1);
   await screen.unmount();
 });

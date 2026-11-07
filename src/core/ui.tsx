@@ -364,7 +364,15 @@ export function Info({ label, value }: { label: string; value?: string | number 
     </View>
   );
 }
-export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void }) {
+export function ErrorBox({
+  error,
+  retry,
+  messageKey,
+}: {
+  error: unknown;
+  retry?: () => void;
+  messageKey?: string;
+}) {
   const { t } = useApp();
   if (!error) return null;
   let key = 'error';
@@ -380,6 +388,7 @@ export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void 
             : error.status === 400
               ? 'invalid'
               : 'error';
+  if (messageKey && !(error instanceof ApiError && error.uncertain)) key = messageKey;
   return (
     <Card style={{ borderColor: '#F3C8C8', backgroundColor: '#FFF8F7' }}>
       <Txt
