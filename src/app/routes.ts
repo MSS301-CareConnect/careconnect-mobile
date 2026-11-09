@@ -14,12 +14,15 @@ export type Routes = {
   Tabs: NavigatorScreenParams<MainTabs> | undefined;
   History: undefined;
   Visit: { id: string };
+  BookingVisits: { bookingId: string; code?: string; name?: string };
   Session: { id: string };
   Report: { bookingId: string; sessionId: string };
   Notifications: undefined;
   Account: undefined;
   BookingRequests: { bookingId?: string } | undefined;
   KeptDeposits: undefined;
+  Wallet: undefined;
+  WalletWithdraw: undefined;
   TimeOff: undefined;
   Certificates: undefined;
   SecuritySessions: undefined;

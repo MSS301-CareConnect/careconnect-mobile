@@ -1,9 +1,10 @@
 import { expect, jest, test } from '@jest/globals';
-import { parseVisit } from '../src/features/visits/models';
+import { groupVisitsByBooking, parseVisit } from '../src/features/visits/models';
 import { VisitRepository } from '../src/features/visits/repository';
 import {
   canAcknowledge,
   canReportNoShow,
+  canWithdraw,
   careStartStep,
   visitErrorKey,
 } from '../src/features/visits/actions';
@@ -114,4 +115,72 @@ test('today focus excludes missed windows and pending no-show reports instead of
   expect(
     (await new VisitRepository({ request }).nextToday(new Date('2030-01-01T01:15:00Z')))?.id,
   ).toBe('later');
+});
+test('visits of one booking are grouped in list order and keep the reassignment flag', () => {
+  const visits = [
+    parseVisit({ ...json, id: 'a', bookingCode: 'BK1', recipientName: 'Lan' }),
+    parseVisit({ ...json, id: 'b', bookingId: 'other', bookingCode: 'BK2' }),
+    parseVisit({ ...json, id: 'c', needsReassignment: true }),
+  ];
+  const groups = groupVisitsByBooking(visits);
+  expect(groups.map((group) => group.bookingId)).toEqual(['b', 'other']);
+  expect(groups[0]?.visits.map((visit) => visit.id)).toEqual(['a', 'c']);
+  expect(groups[0]?.name).toBe('Lan');
+  expect(visits[2]?.needsReassignment).toBe(true);
+  expect(visits[0]?.needsReassignment).toBe(false);
+});
+test('a visit can be withdrawn only when it starts more than 24 hours later and is not being replaced', () => {
+  const visit = parseVisit(json);
+  const start = Date.parse(json.startAt);
+  expect(canWithdraw(visit, start - 24 * 3600000 - 1)).toBe(true);
+  expect(canWithdraw(visit, start - 24 * 3600000)).toBe(false);
+  expect(canWithdraw({ ...visit, needsReassignment: true }, 0)).toBe(false);
+  expect(canWithdraw({ ...visit, status: 'IN_PROGRESS' }, 0)).toBe(false);
+  expect(visitErrorKey(new ApiError(409, 5260))).toBe('withdrawTooLate');
+  expect(visitErrorKey(new ApiError(409, 5261))).toBe('withdrawAlready');
+});
+test('withdrawal sends the visits and reason, validates OTHER and treats a malformed success as uncertain', async () => {
+  const request = jest.fn(async (_method: string, _path: string, body?: unknown) => {
+    const ids = (body as { occurrenceIds: string[] }).occurrenceIds;
+    return ids.map((id) => ({ id: 'w-' + id }));
+  });
+  const repo = new VisitRepository({ request });
+  await expect(repo.withdraw(['v'], 'OTHER', '   ')).rejects.toThrow();
+  expect(request).not.toHaveBeenCalled();
+  expect(await repo.withdraw(['v', 'x'], 'OTHER', '  Con ốm ')).toBe(2);
+  expect(request).toHaveBeenCalledWith('POST', '/caregiver-withdrawals', {
+    occurrenceIds: ['v', 'x'],
+    reasonCode: 'OTHER',
+    reasonDetail: 'Con ốm',
+  });
+  await repo.withdraw(['v'], 'PERSONAL', '');
+  expect(request).toHaveBeenLastCalledWith('POST', '/caregiver-withdrawals', {
+    occurrenceIds: ['v'],
+    reasonCode: 'PERSONAL',
+    reasonDetail: undefined,
+  });
+  const malformed = new VisitRepository({ request: jest.fn(async () => ({})) });
+  await expect(malformed.withdraw(['v'], 'PERSONAL', '')).rejects.toMatchObject({
+    uncertain: true,
+  });
+});
+test('booking visits read every page of one booking and sort by start', async () => {
+  const request = jest.fn(
+    async (_method: string, _path: string, _body?: unknown, query?: unknown) => {
+      const p = (query as { page: number }).page;
+      return {
+        items: [{ ...json, id: 'p' + p, startAt: p ? '2030-01-01T00:00:00Z' : json.startAt }],
+        page: p,
+        totalPages: 2,
+        totalElements: 2,
+      };
+    },
+  );
+  const visits = await new VisitRepository({ request }).bookingVisits('b');
+  expect(visits.map((visit) => visit.id)).toEqual(['p1', 'p0']);
+  expect(request).toHaveBeenCalledWith('GET', '/booking-occurrences', undefined, {
+    bookingId: 'b',
+    page: 0,
+    size: 100,
+  });
 });

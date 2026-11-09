@@ -47,8 +47,22 @@ export function canReportNoShow(visit: Visit, now = Date.now()) {
     now < visitWindow(visit).closes
   );
 }
+// BookingService caregiver-withdrawal-lead (24h): chỉ xin hủy buổi bắt đầu sau mốc này.
+export const WITHDRAWAL_LEAD_MS = 24 * 60 * 60000;
+export function canWithdraw(visit: Visit, now = Date.now()) {
+  return (
+    ['SCHEDULED', 'ACKNOWLEDGED'].includes(visit.status) &&
+    !visit.needsReassignment &&
+    !visit.sessionId &&
+    Date.parse(visit.startAt) - now > WITHDRAWAL_LEAD_MS
+  );
+}
 export function visitErrorKey(error: unknown): string | undefined {
   if (!(error instanceof ApiError)) return undefined;
+  if (error.code === 5260) return 'withdrawTooLate';
+  if (error.code === 5261) return 'withdrawAlready';
+  if (error.code === 5262) return 'withdrawNotAllowed';
+  if (error.code === 5263) return 'withdrawDetailRequired';
   if (error.code === 5242) return 'visitUnpaid';
   if (error.code === 5234) return 'visitReassignment';
   if (error.code === 5817) return 'noShowWindowClosed';

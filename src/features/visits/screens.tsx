@@ -30,8 +30,9 @@ import { useBookingRequestCount } from '../booking-requests/use-request-count';
 import { VisitRepository } from './repository';
 import { VisitActionPanel } from './action-panel';
 import { useVietnamDay as useDay } from '../../core/use-vietnam-day';
-import { VisitCard } from './card';
-import { statuses } from './models';
+import { BookingGroupCard } from './card';
+import { groupVisitsByBooking, statuses } from './models';
+import { VisitWithdrawSection } from './withdraw';
 import { RecipientCard } from './recipient-profile';
 import { AddressActions } from './address-actions';
 function useRepo() {
@@ -270,7 +271,9 @@ function VisitList({
           {remote.data && (
             <>
               {remote.data.items.length ? (
-                remote.data.items.map((visit) => <VisitCard key={visit.id} visit={visit} />)
+                groupVisitsByBooking(remote.data.items).map((group) => (
+                  <BookingGroupCard key={group.bookingId} group={group} />
+                ))
               ) : (
                 <Card>
                   <Txt>{t('emptyVisits')}</Txt>
@@ -317,6 +320,7 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
                 />
               )}
             </Section>
+            <VisitWithdrawSection visit={visit} repo={repo} reload={remote.reload} />
             <RecipientCard visit={visit} repo={repo} />
             <Section title={t('services')} icon="heart">
               {visit.services.length ? (

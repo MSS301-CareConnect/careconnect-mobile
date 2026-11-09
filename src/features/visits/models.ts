@@ -34,7 +34,30 @@ export type Visit = {
   services: string[];
   special: Detail[];
   snapshot?: RecipientSnapshot;
+  // Chờ trung tâm thay người (caregiver đã xin hủy hoặc bị khóa) — BE chặn bắt đầu ca (2026-11-09).
+  needsReassignment: boolean;
 };
+// Các buổi của cùng một booking trong danh sách (2026-11-09: danh sách gom theo booking như FE).
+export type BookingVisitGroup = {
+  bookingId: string;
+  bookingCode: string;
+  name: string;
+  visits: Visit[];
+};
+export function groupVisitsByBooking(visits: Visit[]): BookingVisitGroup[] {
+  const groups = new Map<string, BookingVisitGroup>();
+  for (const visit of visits) {
+    const group = groups.get(visit.bookingId) ?? {
+      bookingId: visit.bookingId,
+      bookingCode: visit.bookingCode,
+      name: visit.name,
+      visits: [],
+    };
+    group.visits.push(visit);
+    groups.set(visit.bookingId, group);
+  }
+  return [...groups.values()];
+}
 const specialKeys = [
   'allergies',
   'chronicConditions',
@@ -78,5 +101,6 @@ export function parseVisit(value: unknown): Visit {
     services: array(j.services).map((v) => text(object(v).serviceName)),
     special: details(j.specialNotes ? object(j.specialNotes) : {}, specialKeys),
     snapshot: snapshot ? parseRecipientSnapshot(snapshot) : undefined,
+    needsReassignment: j.needsReassignment === true,
   };
 }

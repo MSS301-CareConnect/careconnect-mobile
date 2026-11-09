@@ -53,6 +53,40 @@ export class VisitRepository {
       )
     );
   }
+  // Mọi buổi của caregiver trong một booking (trang booking): đọc hết các trang 100 buổi.
+  async bookingVisits(bookingId: string) {
+    const rows: Visit[] = [];
+    for (let p = 0; ; p++) {
+      const result = page(
+        await this.api.request('GET', '/booking-occurrences', undefined, {
+          bookingId,
+          page: p,
+          size: 100,
+        }),
+        parseVisit,
+      );
+      rows.push(...result.items);
+      if (p + 1 >= result.totalPages) break;
+    }
+    return rows.sort((a, b) => a.startAt.localeCompare(b.startAt));
+  }
+  // POST /caregiver-withdrawals: một hoặc nhiều buổi của cùng booking; OTHER bắt buộc ghi chú (BE kiểm lại 24h / chủ buổi).
+  async withdraw(occurrenceIds: string[], reasonCode: 'PERSONAL' | 'OTHER', reasonDetail: string) {
+    const detail = reasonDetail.trim();
+    if (!occurrenceIds.length || occurrenceIds.length > 60)
+      throw new Error('Invalid withdrawal visits');
+    if (reasonCode === 'OTHER' && !detail) throw new Error('Withdrawal reason required');
+    if (detail.length > 1000) throw new Error('Withdrawal reason too long');
+    const result = await this.api.request('POST', '/caregiver-withdrawals', {
+      occurrenceIds,
+      reasonCode,
+      reasonDetail: detail || undefined,
+    });
+    // Phản hồi thành công nhưng sai dạng = chưa rõ kết quả, không coi là lỗi an toàn để gửi lại.
+    if (!Array.isArray(result) || result.length !== occurrenceIds.length)
+      throw new ApiError(0, 0, true);
+    return result.length;
+  }
   async visit(id: string) {
     return parseVisit(await this.api.request('GET', `/booking-occurrences/${id}`));
   }

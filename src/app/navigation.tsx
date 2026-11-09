@@ -15,6 +15,7 @@ import { ToolbarTabIcon, RoundedTabButton } from './tab-bar-ui';
 import { Button, Card, Screen, Title, Txt, colors } from '../core/ui';
 import { ForgotScreen, LoginScreen } from '../features/auth/screens';
 import { VisitsScreen, HistoryScreen, VisitScreen } from '../features/visits/screens';
+import { BookingVisitsScreen } from '../features/visits/booking-visits';
 import { HomeScreen } from '../features/home/screen';
 import { SessionScreen } from '../features/sessions/screen';
 import { ReportScreen } from '../features/reports/screen';
@@ -22,6 +23,8 @@ import { AccountScreen, ProfileScreen } from '../features/profile/screens';
 import { ProviderScheduleScreen, TimeOffScreen } from '../features/availability/screen';
 import { BookingRequestsScreen } from '../features/booking-requests/screen';
 import { KeptDepositsScreen } from '../features/earnings/screen';
+import { WalletScreen } from '../features/wallet/screen';
+import { WalletWithdrawScreen } from '../features/wallet/withdraw-screen';
 import { CertificatesScreen } from '../features/profile/certificates-screen';
 import { SecuritySessionsScreen } from '../features/profile/sessions-screen';
 import { useReducedMotion } from '../core/accessibility';
@@ -191,6 +194,11 @@ export function AppNavigator() {
               />
               <Stack.Screen name="Visit" component={VisitScreen} options={{ title: t('detail') }} />
               <Stack.Screen
+                name="BookingVisits"
+                component={BookingVisitsScreen}
+                options={{ title: t('bookingVisitsTitle') }}
+              />
+              <Stack.Screen
                 name="Session"
                 component={SessionScreen}
                 options={{ title: t('careDetails') }}
@@ -219,6 +227,16 @@ export function AppNavigator() {
                 name="KeptDeposits"
                 component={KeptDepositsScreen}
                 options={{ title: t('keptDeposits') }}
+              />
+              <Stack.Screen
+                name="Wallet"
+                component={WalletScreen}
+                options={{ title: t('wallet') }}
+              />
+              <Stack.Screen
+                name="WalletWithdraw"
+                component={WalletWithdrawScreen}
+                options={{ title: t('walletWithdrawTitle') }}
               />
               <Stack.Screen
                 name="TimeOff"
