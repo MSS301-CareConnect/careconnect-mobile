@@ -129,3 +129,12 @@ Mobile adaptations from FE: single-column scrolling and wrapping facts instead o
 Visit care addresses and full-profile addresses provide Directions and Copy address, matching FE's `visit-logistics.tsx`/`directionsUrl`. Each action uses its own displayed backend address; a profile home address never replaces the occurrence's service address. Directions opens the standard HTTPS Google Maps URL with `api=1` and an encoded `destination`, leaving origin/travel mode to Maps without requesting device location. Empty addresses expose no actions. The feature owns layout/action state; core supplies only a write-only clipboard adapter.
 
 The registered Android `CareConnectClipboard` module calls ClipboardManager only after an explicit copy tap, marks the clip sensitive to suppress its content preview where supported, and resolves success only after `setPrimaryClip`. It exposes no clipboard reader, does not log/copy patient data into app files and adds no dependency or permission. Pending actions lock repeated taps; success/error copy is bilingual and announced, and failures retain the displayed address for retry. Native failures/missing modules never report a successful copy. Android must be rebuilt/reinstalled (`npm run android`) to register the new native package; Metro reload alone is insufficient. The sensitive flag affects preview presentation, not clipboard access guarantees.
+
+## Wallet (2026-11-09)
+
+`features/wallet` (models, repository, `WalletScreen`, `WalletWithdrawScreen`) reads PaymentService `/wallets/me`,
+`/wallets/me/statistics`, `/wallets/me/transactions` and `/wallet-withdrawals` (the token decides the caregiver wallet).
+Profile → My wallet shows the balance and held amount, the period dashboard (kept deposits, bookings, withdrawn, a bar
+chart), the ledger and the caregiver's withdrawal requests; the withdraw form re-reads the balance, checks every field like
+PaymentService (6041/6044–6049) and keeps its content on failure. Kept deposits stays as its own ledger screen.
+

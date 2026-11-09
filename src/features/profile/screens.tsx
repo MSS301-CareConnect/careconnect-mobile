@@ -354,6 +354,8 @@ export function ProfileScreen() {
         )}
       </RemoteState>
       <Card style={profileStyles.linkCard}>
+        <ProfileLink label={t('wallet')} icon="briefcase" onPress={() => nav.navigate('Wallet')} />
+        <View style={profileStyles.divider} />
         <ProfileLink
           label={t('keptDeposits')}
           icon="credit-card"
