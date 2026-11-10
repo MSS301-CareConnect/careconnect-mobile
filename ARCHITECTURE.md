@@ -138,3 +138,12 @@ Profile → My wallet shows the balance and held amount, the period dashboard (k
 chart), the ledger and the caregiver's withdrawal requests; the withdraw form re-reads the balance, checks every field like
 PaymentService (6041/6044–6049) and keeps its content on failure. Kept deposits stays as its own ledger screen.
 
+## Missed visits (2026-11-10)
+
+`features/absences` (models, repository, `AbsencesScreen`, `AbsenceExplainScreen`) reads BookingService
+`/caregiver-absences` (scoped to the signed-in caregiver) and posts `/caregiver-absences/{id}/explanation` (10–1000
+characters, 400 `5272`; 409 `5271` once the center concluded). Profile → Missed visits lists pending or all records with the
+source, explanation and the center's conclusion; Home shows a prompt while any record awaits an explanation (a failed read
+only hides it). A `CAREGIVER_ABSENCE_UPDATED` notification opens the list; `CHECK_IN_LATE` and `REFUND_COMPLETED` have
+their own icons. No money is handled here: the customer was already refunded the visit in full.
+

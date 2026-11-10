@@ -356,6 +356,8 @@ export function ProfileScreen() {
       <Card style={profileStyles.linkCard}>
         <ProfileLink label={t('wallet')} icon="briefcase" onPress={() => nav.navigate('Wallet')} />
         <View style={profileStyles.divider} />
+        <ProfileLink label={t('absences')} icon="user-x" onPress={() => nav.navigate('Absences')} />
+        <View style={profileStyles.divider} />
         <ProfileLink
           label={t('keptDeposits')}
           icon="credit-card"

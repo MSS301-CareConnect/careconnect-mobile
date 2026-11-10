@@ -29,7 +29,8 @@ export function parseNotification(value: unknown): Notification {
 }
 export type NotificationTarget =
   | { screen: 'Visit' | 'Session' | 'Report'; id: string }
-  | { screen: 'BookingRequests' | 'BookingVisits'; bookingId: string };
+  | { screen: 'BookingRequests' | 'BookingVisits'; bookingId: string }
+  | { screen: 'Absences' };
 export function isNotificationId(value: string | undefined): value is string {
   return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
@@ -47,6 +48,8 @@ export function notificationTarget(item: {
       : undefined;
   if (item.type === 'CAREGIVER_REQUEST' && bookingId)
     return { screen: 'BookingRequests', bookingId };
+  // The absence record, not the missed visit, is where the caregiver acts (explain / read the conclusion).
+  if (item.type === 'CAREGIVER_ABSENCE_UPDATED') return { screen: 'Absences' };
   if (
     ![
       'BOOKING',

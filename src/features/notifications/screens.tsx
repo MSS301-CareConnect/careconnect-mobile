@@ -216,6 +216,7 @@ export function NotificationsScreen({ navigation }: Props<'Notifications'>) {
         });
       } else if (target.screen === 'Visit') navigation.navigate('Visit', { id: target.id });
       else if (target.screen === 'Session') navigation.navigate('Session', { id: target.id });
+      else if (target.screen === 'Absences') navigation.navigate('Absences');
     });
   }
   return (
@@ -537,7 +538,14 @@ function notificationVisual(type: string): {
   color: string;
   background: string;
 } {
-  if (['OCCURRENCE_MISSED', 'NO_SHOW_REPORTED', 'NO_SHOW_AUTO_ACCEPTED'].includes(type))
+  if (
+    [
+      'OCCURRENCE_MISSED',
+      'NO_SHOW_REPORTED',
+      'NO_SHOW_AUTO_ACCEPTED',
+      'CAREGIVER_ABSENCE_UPDATED',
+    ].includes(type)
+  )
     return { icon: 'user-x', color: colors.danger, background: colors.dangerBg };
   if (
     [
@@ -555,6 +563,7 @@ function notificationVisual(type: string): {
       'BOOKING_EXPIRED',
       'REMAINING_DUE',
       'REMAINING_OVERDUE',
+      'CHECK_IN_LATE',
     ].includes(type)
   )
     return { icon: 'clock', color: colors.warning, background: colors.warningBg };
@@ -564,7 +573,7 @@ function notificationVisual(type: string): {
     return { icon: 'map-pin', color: colors.info, background: colors.infoBg };
   if (type === 'REPORT_SUBMITTED')
     return { icon: 'file-text', color: colors.primary, background: colors.pale };
-  if (['SESSION_ENDED', 'BOOKING_COMPLETED'].includes(type))
+  if (['SESSION_ENDED', 'BOOKING_COMPLETED', 'REFUND_COMPLETED'].includes(type))
     return { icon: 'check-circle', color: colors.primary, background: colors.pale };
   return { icon: 'bell', color: colors.primary, background: colors.pale };
 }

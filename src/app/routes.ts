@@ -23,6 +23,8 @@ export type Routes = {
   KeptDeposits: undefined;
   Wallet: undefined;
   WalletWithdraw: undefined;
+  Absences: undefined;
+  AbsenceExplain: { id: string };
   TimeOff: undefined;
   Certificates: undefined;
   SecuritySessions: undefined;

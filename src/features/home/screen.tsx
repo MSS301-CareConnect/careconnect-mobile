@@ -23,6 +23,7 @@ import { VisitRepository } from '../visits/repository';
 import { VisitCard } from '../visits/card';
 import { CareBanner } from './care-banner';
 import { useBookingRequestCount } from '../booking-requests/use-request-count';
+import { AbsenceRepository } from '../absences/repository';
 
 export function HomeScreen() {
   const { api, t, user, locale } = useApp();
@@ -34,6 +35,10 @@ export function HomeScreen() {
   const remote = useRemote(
     useCallback(() => repo.today(new Date(day + 'T12:00:00+07:00'), p), [repo, p, day]),
   );
+  // Missed visits still waiting for the caregiver's explanation; a failed read only hides the prompt.
+  const absenceRepo = useMemo(() => new AbsenceRepository(api), [api]);
+  const absences = useRemote(useCallback(() => absenceRepo.list('PENDING'), [absenceRepo]));
+  const pendingAbsences = absences.data?.totalElements ?? 0;
   const nav = useNavigation<NativeStackNavigationProp<Routes>>();
   useEffect(() => {
     if (previousDay.current !== day) {
@@ -127,6 +132,27 @@ export function HomeScreen() {
               </View>
             </Pressable>
           )}
+        </Card>
+      ) : null}
+
+      {pendingAbsences > 0 ? (
+        <Card style={styles.attentionCard}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => nav.navigate('Absences')}
+            style={({ pressed }) => [styles.attentionRow, pressed && styles.pressed]}
+          >
+            <View style={styles.attentionIcon}>
+              <Feather name="user-x" size={22} color={colors.danger} accessible={false} />
+            </View>
+            <Txt accessibilityLiveRegion="polite" style={styles.attentionText}>
+              {t('homeAbsencesPending').replace('{count}', String(pendingAbsences))}
+            </Txt>
+            <View style={styles.reply}>
+              <Txt style={styles.viewAllText}>{t('homeAbsencesOpen')}</Txt>
+              <Feather name="chevron-right" size={18} color={colors.primary} accessible={false} />
+            </View>
+          </Pressable>
         </Card>
       ) : null}
 

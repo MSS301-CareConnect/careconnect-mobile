@@ -25,6 +25,7 @@ import { BookingRequestsScreen } from '../features/booking-requests/screen';
 import { KeptDepositsScreen } from '../features/earnings/screen';
 import { WalletScreen } from '../features/wallet/screen';
 import { WalletWithdrawScreen } from '../features/wallet/withdraw-screen';
+import { AbsenceExplainScreen, AbsencesScreen } from '../features/absences/screen';
 import { CertificatesScreen } from '../features/profile/certificates-screen';
 import { SecuritySessionsScreen } from '../features/profile/sessions-screen';
 import { useReducedMotion } from '../core/accessibility';
@@ -237,6 +238,16 @@ export function AppNavigator() {
                 name="WalletWithdraw"
                 component={WalletWithdrawScreen}
                 options={{ title: t('walletWithdrawTitle') }}
+              />
+              <Stack.Screen
+                name="Absences"
+                component={AbsencesScreen}
+                options={{ title: t('absences') }}
+              />
+              <Stack.Screen
+                name="AbsenceExplain"
+                component={AbsenceExplainScreen}
+                options={{ title: t('absenceExplainTitle') }}
               />
               <Stack.Screen
                 name="TimeOff"

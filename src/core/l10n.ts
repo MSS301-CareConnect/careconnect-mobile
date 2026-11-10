@@ -5,6 +5,7 @@ import { profileCopy } from './copy/profile';
 import { shellCopy } from './copy/shell';
 import { recipientCopy } from './copy/recipient';
 import { walletCopy } from './copy/wallet';
+import { absenceCopy } from './copy/absence';
 
 export const copy = {
   app: ['CareConnect', 'CareConnect'],
@@ -398,6 +399,7 @@ export const copy = {
   ...shellCopy,
   ...recipientCopy,
   ...walletCopy,
+  ...absenceCopy,
 } as const;
 export type Locale = 'vi' | 'en';
 export function translate(locale: Locale, key: string): string {
