@@ -25,8 +25,8 @@ export const shellCopy: Record<string, readonly [string, string]> = {
   ],
   homeRegister: ['Đăng ký ca', 'Register for shifts'],
   homeUpcoming: ['Xem buổi sắp tới', 'View upcoming visits'],
-  languageVie: ['VIE', 'VIE'],
-  languageEng: ['ENG', 'ENG'],
+  languageVie: ['VI', 'VI'],
+  languageEng: ['EN', 'EN'],
   languageVietnamese: ['Tiếng Việt', 'Vietnamese'],
   languageEnglish: ['Tiếng Anh', 'English'],
   shellFocus: ['Ca cần ưu tiên', 'Your next care visit'],
@@ -80,6 +80,5 @@ export const shellCopy: Record<string, readonly [string, string]> = {
   ],
   shellAvatarDiscard: ['Bỏ ảnh đang chọn', 'Remove selected photo'],
   shellSecurity: ['Thiết bị đăng nhập', 'Signed-in devices'],
-  shellSignInRole: ['Dành cho người chăm sóc', 'Caregiver sign-in'],
   shellUpdated: ['Đã cập nhật thông tin.', 'Your information has been updated.'],
 };

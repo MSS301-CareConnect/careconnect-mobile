@@ -6,6 +6,7 @@ import { shellCopy } from './copy/shell';
 import { recipientCopy } from './copy/recipient';
 import { walletCopy } from './copy/wallet';
 import { absenceCopy } from './copy/absence';
+import { landingCopy } from './copy/landing';
 
 export const copy = {
   app: ['CareConnect', 'CareConnect'],
@@ -45,11 +46,8 @@ export const copy = {
   email: ['Email', 'Email'],
   password: ['Mật khẩu', 'Password'],
   login: ['Đăng nhập', 'Sign in'],
-  loginTitle: ['Đồng hành cùng mỗi ca chăm sóc', 'Here for every moment of care'],
-  loginHint: [
-    'Đăng nhập bằng tài khoản người chăm sóc do trung tâm cung cấp.',
-    'Sign in with the caregiver account provided by your care center.',
-  ],
+  loginEmailPlaceholder: ['ten@example.com', 'name@example.com'],
+  loginPasswordPlaceholder: ['Nhập mật khẩu của bạn', 'Enter your password'],
   forgot: ['Quên mật khẩu?', 'Forgot password?'],
   show: ['Hiện', 'Show'],
   hide: ['Ẩn', 'Hide'],
@@ -400,6 +398,7 @@ export const copy = {
   ...recipientCopy,
   ...walletCopy,
   ...absenceCopy,
+  ...landingCopy,
 } as const;
 export type Locale = 'vi' | 'en';
 export function translate(locale: Locale, key: string): string {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, useWindowDimensions, View } from 'react-native';
 import {
   NavigationContainer,
@@ -14,6 +14,7 @@ import { MainTabs, Routes } from './routes';
 import { ToolbarTabIcon, RoundedTabButton } from './tab-bar-ui';
 import { Button, Card, Screen, Title, Txt, colors } from '../core/ui';
 import { ForgotScreen, LoginScreen } from '../features/auth/screens';
+import { LandingScreen } from '../features/landing/screen';
 import { VisitsScreen, HistoryScreen, VisitScreen } from '../features/visits/screens';
 import { BookingVisitsScreen } from '../features/visits/booking-visits';
 import { HomeScreen } from '../features/home/screen';
@@ -38,9 +39,10 @@ import {
   NotificationProvider,
   NotificationsScreen,
 } from '../features/notifications/screens';
-const Stack = createNativeStackNavigator<Routes & { Login: undefined }>();
+type RootRoutes = Routes & { Login: undefined; Landing: undefined };
+const Stack = createNativeStackNavigator<RootRoutes>();
 const Tab = createBottomTabNavigator<MainTabs>();
-const navRef = createNavigationContainerRef<Routes & { Login: undefined }>();
+const navRef = createNavigationContainerRef<RootRoutes>();
 const theme = {
   ...DefaultTheme,
   colors: {
@@ -154,6 +156,9 @@ export function AppNavigator() {
   const { api, t } = useApp();
   const reducedMotion = useReducedMotion();
   const status = api.state.status;
+  // The landing slides open a signed-out launch once; later remounts and sign-outs open sign-in.
+  const [landingPending, setLandingPending] = useState(true);
+  if (status === 'signedIn' && landingPending) setLandingPending(false);
   if (status === 'booting' || status === 'restoreError')
     return (
       <Screen>
@@ -177,6 +182,7 @@ export function AppNavigator() {
       <View style={{ flex: 1 }}>
         {signed && <NotificationBanner onPress={() => navRef.navigate('Notifications')} />}
         <Stack.Navigator
+          initialRouteName={signed ? 'Tabs' : landingPending ? 'Landing' : 'Login'}
           screenOptions={{
             headerShadowVisible: false,
             headerTitleStyle: { fontWeight: '700' },
@@ -282,6 +288,9 @@ export function AppNavigator() {
             </>
           ) : (
             <>
+              <Stack.Screen name="Landing" options={{ headerShown: false }}>
+                {() => <LandingScreen onDone={() => setLandingPending(false)} />}
+              </Stack.Screen>
               <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
               <Stack.Screen
                 name="Forgot"

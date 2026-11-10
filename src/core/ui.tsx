@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInputInstance,
   TextInputProps,
   TextProps,
   useWindowDimensions,
@@ -22,6 +23,7 @@ import { ApiError } from './api';
 import { useApp } from './app-context';
 export const colors = {
   primary: '#087443',
+  primaryDeep: '#064E30',
   ink: '#202D26',
   muted: '#5C6F62',
   bg: '#F8FAF8',
@@ -194,6 +196,7 @@ export function Button({
   label,
   accessibilityLabel = label,
   style,
+  disabledStyle,
   onPress,
   disabled = false,
   loading = false,
@@ -203,6 +206,7 @@ export function Button({
   label: string;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
+  disabledStyle?: StyleProp<ViewStyle>;
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
@@ -223,6 +227,7 @@ export function Button({
         kind === 'primary' ? s.primary : kind === 'danger' ? s.dangerButton : s.secondary,
         style,
         (disabled || loading) && s.disabled,
+        (disabled || loading) && disabledStyle,
         pressed && { opacity: 0.75 },
       ]}
     >
@@ -239,23 +244,65 @@ export function Field({
   label,
   hint,
   error,
+  labelIcon,
   trailing,
+  ref,
+  onFocus,
+  onBlur,
   ...props
-}: TextInputProps & { label: string; hint?: string; error?: string; trailing?: React.ReactNode }) {
+}: TextInputProps & {
+  label: string;
+  hint?: string;
+  error?: string;
+  labelIcon?: React.ComponentProps<typeof Feather>['name'];
+  trailing?: React.ReactNode;
+  ref?: React.Ref<TextInputInstance>;
+}) {
+  const [focused, setFocused] = React.useState(false);
+  const hasInputRow = !!(labelIcon || trailing);
   return (
     <View style={s.field}>
-      <Txt style={s.label}>{label}</Txt>
-      <View style={trailing ? [s.inputRow, error ? s.invalidInput : undefined] : undefined}>
+      {labelIcon ? (
+        <View style={s.fieldLabelRow}>
+          <View style={s.fieldLabelIcon} importantForAccessibility="no-hide-descendants">
+            <Feather name={labelIcon} size={19} color={colors.primaryDeep} accessible={false} />
+          </View>
+          <Txt style={s.fieldLabelWithIcon}>{label}</Txt>
+        </View>
+      ) : (
+        <Txt style={s.label}>{label}</Txt>
+      )}
+      <View
+        style={
+          hasInputRow
+            ? [
+                s.inputRow,
+                labelIcon && s.inputRowWithLabelIcon,
+                labelIcon && focused && s.focusedInput,
+                error && s.invalidInput,
+              ]
+            : undefined
+        }
+      >
         <TextInput
+          ref={ref}
           accessibilityLabel={label}
           accessibilityHint={error || hint}
           placeholderTextColor={colors.muted}
           {...props}
+          onFocus={(event) => {
+            if (labelIcon) setFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            if (labelIcon) setFocused(false);
+            onBlur?.(event);
+          }}
           style={[
             s.input,
             props.multiline && s.multiline,
-            error && !trailing ? s.invalidInput : undefined,
-            trailing ? s.growInput : undefined,
+            error && !hasInputRow ? s.invalidInput : undefined,
+            hasInputRow ? s.growInput : undefined,
             props.style,
           ]}
         />
@@ -523,6 +570,16 @@ export const s = StyleSheet.create({
   buttonText: { fontSize: 16, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
   field: { gap: 7 },
   label: { fontSize: 13, fontWeight: '700' },
+  fieldLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  fieldLabelIcon: {
+    width: 36,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.pale,
+  },
+  fieldLabelWithIcon: { flexShrink: 1, fontWeight: '700' },
   input: {
     minHeight: 48,
     borderWidth: 1,
@@ -546,6 +603,8 @@ export const s = StyleSheet.create({
     paddingRight: 4,
   },
   growInput: { flex: 1, minWidth: 0, borderWidth: 0, backgroundColor: 'transparent' },
+  inputRowWithLabelIcon: { backgroundColor: '#F3F9F4', borderColor: '#86A491' },
+  focusedInput: { borderColor: colors.primary, borderWidth: 2 },
   fieldHint: { fontSize: 13, lineHeight: 20 },
   fieldError: { fontSize: 13, lineHeight: 20, color: colors.danger },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

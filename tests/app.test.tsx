@@ -84,6 +84,7 @@ test('login retains entered credentials on server error and supports English', a
   const api = client(() => reply(null, 403));
   const screen = await render(<App client={api} />);
   await screen.findByText('Đồng hành cùng mỗi ca chăm sóc');
+  await fireEvent.press(screen.getByRole('button', { name: 'Bỏ qua' }));
   await fireEvent.changeText(screen.getByLabelText('Email'), 'caregiver@example.test');
   await fireEvent.changeText(screen.getByLabelText('Mật khẩu'), 'retained-password');
   await fireEvent.press(screen.getByText('Đăng nhập'));
@@ -91,7 +92,7 @@ test('login retains entered credentials on server error and supports English', a
   expect(screen.getByDisplayValue('caregiver@example.test')).toBeTruthy();
   expect(screen.getByDisplayValue('retained-password')).toBeTruthy();
   await fireEvent.press(screen.getByRole('button', { name: 'Tiếng Anh' }));
-  expect(screen.getByText('Here for every moment of care')).toBeTruthy();
+  expect(await screen.findByText('Sign in')).toBeTruthy();
   await screen.unmount();
 });
 test('transient session restore exposes retry and never shows protected screens', async () => {
@@ -157,7 +158,7 @@ test('failed note write keeps form and blocks repeat until server reconciliation
   await screen.unmount();
 });
 
-test('login can retry after an uncertain network failure', async () => {
+test('keyboard sign-in requires credentials and login can retry after a network failure', async () => {
   let attempts = 0;
   const api = client(() => {
     attempts++;
@@ -165,11 +166,41 @@ test('login can retry after an uncertain network failure', async () => {
   });
   const screen = await render(<App client={api} />);
   await screen.findByText('Đồng hành cùng mỗi ca chăm sóc');
+  await fireEvent.press(screen.getByRole('button', { name: 'Bỏ qua' }));
+  await fireEvent(screen.getByLabelText('Mật khẩu'), 'submitEditing');
+  expect(attempts).toBe(0);
   await fireEvent.changeText(screen.getByLabelText('Email'), 'care@example.test');
   await fireEvent.changeText(screen.getByLabelText('Mật khẩu'), 'password');
-  await fireEvent.press(screen.getByRole('button', { name: 'Đăng nhập' }));
+  await fireEvent(screen.getByLabelText('Mật khẩu'), 'submitEditing');
   await screen.findByText(/Không kết nối được máy chủ/);
   await fireEvent.press(screen.getByRole('button', { name: 'Đăng nhập' }));
   expect(attempts).toBe(2);
+  await screen.unmount();
+});
+
+test('landing walks through five slides before sign-in and supports going back', async () => {
+  const api = client(() => reply(null, 403));
+  const screen = await render(<App client={api} />);
+  await screen.findByText('Đồng hành cùng mỗi ca chăm sóc');
+  expect(screen.getByLabelText('Bước 1 trên 5')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Quay lại' })).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Tiếp tục' }));
+  expect(screen.getByText('Chủ động lịch làm')).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Quay lại' }));
+  expect(screen.getByText('Đồng hành cùng mỗi ca chăm sóc')).toBeTruthy();
+  for (const title of [
+    'Chủ động lịch làm',
+    'Không bỏ lỡ yêu cầu',
+    'Chăm sóc từng bước',
+    'Thu nhập rõ ràng',
+  ]) {
+    await fireEvent.press(screen.getByRole('button', { name: 'Tiếp tục' }));
+    expect(screen.getByText(title)).toBeTruthy();
+  }
+  expect(screen.getByLabelText('Bước 5 trên 5')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Bỏ qua' })).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Bắt đầu' }));
+  expect(await screen.findByLabelText('Email')).toBeTruthy();
+  expect(screen.queryByText('Thu nhập rõ ràng')).toBeNull();
   await screen.unmount();
 });

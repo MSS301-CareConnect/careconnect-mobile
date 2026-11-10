@@ -1,8 +1,15 @@
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  type TextInputInstance,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@react-native-vector-icons/feather/static';
 import { useApp } from '../../core/app-context';
-import { BrandMark } from '../../core/brand';
 import { Routes } from '../../app/routes';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,108 +23,145 @@ export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
+  const passwordInput = useRef<TextInputInstance>(null);
   const write = useWrite();
+  const canSignIn = !!(email.trim() && password) && !write.busy;
+  function signIn() {
+    if (canSignIn) write.run(() => api.login(email, password));
+  }
   return (
-    <Screen topInset>
-      <View style={styles.intro}>
-        <View style={styles.header}>
-          <View style={styles.brand}>
-            <BrandMark size={40} />
-            <Txt style={styles.brandName} numberOfLines={1}>
-              {t('app')}
-            </Txt>
-          </View>
-          <View style={styles.languages}>
-            {(['vi', 'en'] as const).map((value) => (
-              <Pressable
-                key={value}
-                accessibilityRole="button"
-                accessibilityLabel={t(value === 'vi' ? 'languageVietnamese' : 'languageEnglish')}
-                accessibilityState={{ selected: locale === value }}
-                onPress={() => setLocale(value)}
-                style={({ pressed }) => [
-                  styles.languageButton,
-                  locale === value && styles.languageActive,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Txt style={[styles.languageText, locale === value && styles.languageActiveText]}>
-                  {t(value === 'vi' ? 'languageVie' : 'languageEng')}
-                </Txt>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-        <Title>{t('loginTitle')}</Title>
-        <Txt style={styles.role}>{t('shellSignInRole')}</Txt>
-        <Txt muted>{t('loginHint')}</Txt>
-      </View>
-      <Card>
-        <Field
-          label={t('email')}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          autoComplete="email"
-          autoCorrect={false}
-          editable={!write.busy}
-        />
-        <Field
-          label={t('password')}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={!show}
-          autoComplete="current-password"
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!write.busy}
-          trailing={
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t(show ? 'hide' : 'show')}
-              accessibilityState={{ disabled: write.busy }}
-              onPress={() => setShow(!show)}
-              disabled={write.busy}
-              style={({ pressed }) => [styles.eyeButton, pressed && styles.pressed]}
-            >
-              <Feather
-                name={show ? 'eye-off' : 'eye'}
-                size={22}
-                color={colors.primary}
-                accessible={false}
+    <View style={styles.loginBackground}>
+      <Image
+        source={require('../../../assets/images/login-leaves.png')}
+        style={styles.leaves}
+        pointerEvents="none"
+        importantForAccessibility="no"
+      />
+      <SafeAreaView style={styles.safe}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.loginScroll}>
+          <View style={styles.loginContent}>
+            <View style={styles.languages}>
+              {(['vi', 'en'] as const).map((value) => (
+                <Pressable
+                  key={value}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(value === 'vi' ? 'languageVietnamese' : 'languageEnglish')}
+                  accessibilityState={{ selected: locale === value }}
+                  onPress={() => setLocale(value)}
+                  style={({ pressed }) => [
+                    styles.languageButton,
+                    locale === value && styles.languageActive,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Txt style={[styles.languageText, locale === value && styles.languageActiveText]}>
+                    {t(value === 'vi' ? 'languageVie' : 'languageEng')}
+                  </Txt>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.brand}>
+              <Image
+                source={require('../../../assets/images/careconnect-login-logo.png')}
+                accessible
+                accessibilityRole="image"
+                accessibilityLabel={t('app')}
+                resizeMode="contain"
+                style={styles.brandLogo}
               />
-            </Pressable>
-          }
-        />
-        <View style={styles.recoveryRow}>
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={t('resetPassword')}
-            accessibilityState={{ disabled: write.busy }}
-            disabled={write.busy}
-            onPress={() => navigation.navigate('Forgot')}
-            style={({ pressed }) => [
-              styles.textLink,
-              write.busy && styles.disabled,
-              pressed && styles.pressed,
-            ]}
+              <Txt style={styles.tagline}>{t('tagline')}</Txt>
+            </View>
+            <Card style={styles.loginCard}>
+              <Field
+                label={t('email')}
+                labelIcon="mail"
+                placeholder={t('loginEmailPlaceholder')}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoComplete="email"
+                autoCorrect={false}
+                editable={!write.busy}
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => passwordInput.current?.focus()}
+              />
+              <View>
+                <Field
+                  ref={passwordInput}
+                  label={t('password')}
+                  labelIcon="lock"
+                  placeholder={t('loginPasswordPlaceholder')}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!show}
+                  autoComplete="current-password"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!write.busy}
+                  returnKeyType="go"
+                  onSubmitEditing={signIn}
+                  trailing={
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t(show ? 'hide' : 'show')}
+                      accessibilityState={{ disabled: write.busy }}
+                      onPress={() => setShow((current) => !current)}
+                      disabled={write.busy}
+                      style={({ pressed }) => [styles.eyeButton, pressed && styles.pressed]}
+                    >
+                      <Feather
+                        name={show ? 'eye-off' : 'eye'}
+                        size={22}
+                        color={colors.primary}
+                        accessible={false}
+                      />
+                    </Pressable>
+                  }
+                />
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel={t('resetPassword')}
+                  accessibilityState={{ disabled: write.busy }}
+                  disabled={write.busy}
+                  onPress={() => navigation.navigate('Forgot')}
+                  style={({ pressed }) => [
+                    styles.textLink,
+                    write.busy && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Txt style={styles.textLinkLabel}>{t('resetPassword')}</Txt>
+                </Pressable>
+              </View>
+              <ErrorBox error={write.error} />
+              <Button
+                label={t('login')}
+                loading={write.busy}
+                disabled={!canSignIn}
+                icon="arrow-right"
+                style={[styles.signInButton, canSignIn && styles.signInGradient]}
+                disabledStyle={styles.signInDisabled}
+                onPress={signIn}
+              />
+            </Card>
+          </View>
+          <View
+            style={styles.footer}
+            pointerEvents="none"
+            importantForAccessibility="no-hide-descendants"
           >
-            <Txt style={styles.textLinkLabel}>{t('resetPassword')}</Txt>
-          </Pressable>
-        </View>
-        <ErrorBox error={write.error} />
-        <Button
-          label={t('login')}
-          loading={write.busy}
-          disabled={!email.trim() || !password}
-          onPress={() => void write.run(() => api.login(email, password))}
-        />
-      </Card>
-      <Txt muted style={{ textAlign: 'center', fontSize: 12 }}>
-        {t('tagline')}
-      </Txt>
-    </Screen>
+            <Image
+              source={require('../../../assets/images/login-hills.png')}
+              style={styles.hills}
+              resizeMode="stretch"
+              fadeDuration={0}
+            />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 export function ForgotScreen() {
@@ -200,40 +244,81 @@ export function ForgotScreen() {
 }
 
 const styles = StyleSheet.create({
-  recoveryRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  loginBackground: {
+    flex: 1,
+    backgroundColor: '#EDF7EE',
+    experimental_backgroundImage: 'linear-gradient(155deg, #DEEFE0, #F7FBF6 38%, #EAF6E9)',
+  },
+  safe: { flex: 1 },
+  loginScroll: { flexGrow: 1 },
+  loginContent: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 448,
+    paddingTop: 8,
+    paddingHorizontal: 24,
+  },
+  leaves: { position: 'absolute', top: 0, left: 0, width: 200, height: 100 },
+  footer: { flexGrow: 1, minHeight: 120, justifyContent: 'flex-end' },
+  hills: { width: '100%', height: 120 },
+  loginCard: {
+    elevation: 4,
+    shadowColor: colors.primaryDeep,
+    borderWidth: 0,
+    borderRadius: 24,
+    padding: 20,
+    gap: 16,
+  },
   textLink: {
+    alignSelf: 'flex-end',
     minHeight: 48,
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingLeft: 8,
     maxWidth: '100%',
   },
   textLinkLabel: { color: colors.primary, fontWeight: '600', textAlign: 'center' },
   disabled: { opacity: 0.45 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
-  brandName: {
-    fontSize: 20,
-    lineHeight: 28,
-    fontWeight: '800',
-    color: colors.primary,
-    flexShrink: 1,
+  brand: { alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 24 },
+  brandLogo: { width: 208, height: 136 },
+  tagline: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.muted,
+    textAlign: 'center',
   },
-  languages: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  languages: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#C8DFCE',
+    backgroundColor: '#F3FAF4',
+    overflow: 'hidden',
+  },
   languageButton: {
     minWidth: 48,
     minHeight: 48,
     paddingHorizontal: 8,
-    borderRadius: 12,
+    borderRadius: 24,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.pale,
   },
-  languageActive: { backgroundColor: colors.primary },
-  languageText: { fontSize: 13, lineHeight: 20, fontWeight: '700', color: colors.primary },
+  languageActive: {
+    backgroundColor: colors.primary,
+    experimental_backgroundImage: 'linear-gradient(135deg, #26864E, #075B38)',
+  },
+  languageText: { fontSize: 13, lineHeight: 20, fontWeight: '700', color: colors.neutral },
   languageActiveText: { color: colors.white },
   eyeButton: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  signInButton: {
+    minHeight: 52,
+    flexDirection: 'row-reverse',
+  },
+  signInGradient: {
+    experimental_backgroundImage: 'linear-gradient(100deg, #25834B, #075735)',
+  },
+  signInDisabled: { opacity: 1, backgroundColor: '#557662' },
   pressed: { opacity: 0.65 },
-  intro: { paddingTop: 16, gap: 16 },
-  role: { fontSize: 13, lineHeight: 20, color: colors.primary, fontWeight: '700' },
 });

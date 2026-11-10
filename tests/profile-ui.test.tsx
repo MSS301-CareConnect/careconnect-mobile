@@ -57,7 +57,7 @@ test('successful password change clears credentials and protected UI immediately
     await fireEvent.changeText(screen.getByLabelText('Mật khẩu mới'), 'Changed1!');
     await fireEvent.changeText(screen.getByLabelText('Xác nhận mật khẩu mới'), 'Changed1!');
     await fireEvent.press(screen.getByRole('button', { name: 'Đổi mật khẩu' }));
-    await screen.findByText('Đồng hành cùng mỗi ca chăm sóc');
+    await screen.findByLabelText('Email');
     expect(token).toBeNull();
     expect(api.state.status).toBe('signedOut');
     expect(passwordWrites).toBe(1);
