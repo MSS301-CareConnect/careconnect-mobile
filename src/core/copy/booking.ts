@@ -148,6 +148,10 @@ export const bookingCopy: Record<string, readonly [string, string]> = {
     'Buổi này đã có báo vắng mặt. Tải lại để xem kết quả.',
     'An absence report already exists. Refresh to see its status.',
   ],
+  sessionStillOpen: [
+    'Bạn đang có một ca chưa check-out. Hãy kết thúc ca đó trước khi bắt đầu ca mới.',
+    'You still have a visit that is not checked out. End it before starting another one.',
+  ],
   visitWindowOpens: ['Check-in mở lúc', 'Check-in opens'],
   visitStartOpensAt: ['Mở lúc {time}', 'Opens at {time}'],
   visitNextStep: ['Bước tiếp theo', 'Next step'],

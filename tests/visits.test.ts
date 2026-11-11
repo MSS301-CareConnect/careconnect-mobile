@@ -17,10 +17,13 @@ const json = {
   checkInClosesAt: '2030-01-01T01:10:00Z',
   status: 'SCHEDULED',
 };
-test('care start is hidden until acknowledged and obeys the server window and exclusive end', () => {
+test('care start obeys the server window and exclusive end; a visit not accepted in time starts directly', () => {
   const opens = '2030-01-01T00:45:00Z';
   const visit = parseVisit({ ...json, checkInOpensAt: opens });
-  expect(careStartStep(visit, Date.parse(opens))).toBe('none');
+  // Before the window a SCHEDULED visit is accepted first; inside it, checking in accepts it (2026-11-11).
+  expect(careStartStep(visit, Date.parse(opens) - 1)).toBe('none');
+  expect(careStartStep(visit, Date.parse(opens))).toBe('ready');
+  expect(careStartStep(visit, Date.parse(json.checkInClosesAt))).toBe('none');
   const acknowledged = { ...visit, status: 'ACKNOWLEDGED' };
   expect(careStartStep(acknowledged, Date.parse(opens) - 1)).toBe('waiting');
   expect(careStartStep(acknowledged, Date.parse(opens))).toBe('ready');
@@ -31,10 +34,11 @@ test('care start is hidden until acknowledged and obeys the server window and ex
     'none',
   );
 });
-test('no-show uses the captured server window and acknowledgment stops exactly at start', () => {
+test('no-show uses the captured server window and acknowledgment gives way to start when the window opens', () => {
   const visit = parseVisit(json);
-  expect(canAcknowledge(visit, Date.parse('2030-01-01T00:59:59Z'))).toBe(true);
-  expect(canAcknowledge(visit, Date.parse(json.startAt))).toBe(false);
+  // No captured opening: 30 minutes before the start.
+  expect(canAcknowledge(visit, Date.parse('2030-01-01T00:29:59Z'))).toBe(true);
+  expect(canAcknowledge(visit, Date.parse('2030-01-01T00:30:00Z'))).toBe(false);
   expect(canReportNoShow(visit, Date.parse('2030-01-01T00:59:59Z'))).toBe(false);
   expect(canReportNoShow(visit, Date.parse(json.startAt))).toBe(true);
   expect(canReportNoShow(visit, Date.parse(json.checkInClosesAt))).toBe(false);
@@ -44,7 +48,7 @@ test('no-show uses the captured server window and acknowledgment stops exactly a
     noShowNote: 'Customer did not answer',
   });
   expect(pending.noShowNote).toBe('Customer did not answer');
-  expect(canAcknowledge(pending, Date.parse('2030-01-01T00:59:59Z'))).toBe(false);
+  expect(canAcknowledge(pending, Date.parse('2030-01-01T00:29:59Z'))).toBe(false);
   expect(canReportNoShow(pending, Date.parse('2030-01-01T01:01:00Z'))).toBe(false);
 });
 test('no-show sends the trimmed note and prevents out-of-contract writes', async () => {

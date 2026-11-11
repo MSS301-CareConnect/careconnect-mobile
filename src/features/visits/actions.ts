@@ -11,14 +11,20 @@ export function visitWindow(visit: Visit) {
 export function waitingForNoShow(visit: Visit) {
   return !!visit.noShowReportedAt && !visit.noShowDecidedAt;
 }
+// 2026-11-11: BookingService nhận buổi tới khi đóng cửa sổ check-in; trong cửa sổ check-in thì bấm "Bắt đầu" luôn
+// (check-in từ SCHEDULED cũng là nhận buổi), nên chỉ hiện "Nhận" trước khi cửa sổ mở.
 export function canAcknowledge(visit: Visit, now = Date.now()) {
-  return (
-    visit.status === 'SCHEDULED' && now < Date.parse(visit.startAt) && !waitingForNoShow(visit)
-  );
+  return visit.status === 'SCHEDULED' && now < visitWindow(visit).opens && !waitingForNoShow(visit);
 }
-// Starting is a separate next step after an acknowledged server response, as on FE.
+// Starting is the next step after accepting, or straight away for a visit not accepted in time, as on FE.
 export function careStartStep(visit: Visit, now = Date.now()): 'none' | 'waiting' | 'ready' {
-  if (visit.status !== 'ACKNOWLEDGED' || visit.sessionId || waitingForNoShow(visit)) return 'none';
+  if (
+    !['SCHEDULED', 'ACKNOWLEDGED'].includes(visit.status) ||
+    visit.sessionId ||
+    waitingForNoShow(visit)
+  )
+    return 'none';
+  if (visit.status === 'SCHEDULED' && now < visitWindow(visit).opens) return 'none';
   const { opens, closes } = visitWindow(visit);
   if (
     !Number.isFinite(opens) ||
@@ -67,5 +73,6 @@ export function visitErrorKey(error: unknown): string | undefined {
   if (error.code === 5234) return 'visitReassignment';
   if (error.code === 5817) return 'noShowWindowClosed';
   if (error.code === 5814) return 'noShowAlreadyReported';
+  if (error.code === 5806) return 'sessionStillOpen';
   return undefined;
 }
