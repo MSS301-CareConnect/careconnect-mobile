@@ -1,0 +1,77 @@
+export const assistantCopy: Record<string, readonly [string, string]> = {
+  assistantTitle: ['Trợ lý AI', 'AI assistant'],
+  assistantOpen: ['Mở trợ lý AI', 'Open the AI assistant'],
+  assistantClose: ['Đóng trợ lý AI', 'Close the AI assistant'],
+  assistantName: ['Trợ lý CareConnect', 'CareConnect assistant'],
+  assistantSubtitle: [
+    'Hỏi về chăm sóc tại nhà, dịch vụ và cách đặt lịch',
+    'Ask about home care, services and booking',
+  ],
+  assistantGreeting: [
+    'Xin chào! Tôi có thể giúp bạn tìm hiểu cách chăm sóc người thân tại nhà, các dịch vụ và cách đặt lịch trên CareConnect.',
+    'Hello! I can help you with caring for a family member at home, our services and how to book on CareConnect.',
+  ],
+  assistantDisclaimer: [
+    'Thông tin chỉ để tham khảo, không thay thế tư vấn y tế. Khẩn cấp hãy gọi 115.',
+    'For general information. Seek medical advice when needed. In an emergency in Vietnam, call 115.',
+  ],
+  assistantPrivacy: [
+    'Tránh gửi hồ sơ hoặc thông tin nhận dạng người được chăm sóc.',
+    'Keep care records and identifying details out of the chat.',
+  ],
+  assistantNew: ['Cuộc trò chuyện mới', 'New chat'],
+  assistantHistory: ['Lịch sử trò chuyện', 'Chat history'],
+  assistantBackToChat: ['Quay lại trò chuyện', 'Back to the chat'],
+  assistantNoHistory: ['Bạn chưa có cuộc trò chuyện nào.', 'You have no conversations yet.'],
+  assistantRename: ['Đổi tên cuộc trò chuyện', 'Rename conversation'],
+  assistantConversationName: ['Tên cuộc trò chuyện', 'Conversation name'],
+  assistantRenamed: ['Đã đổi tên cuộc trò chuyện.', 'Conversation renamed.'],
+  assistantDeleted: ['Đã xóa cuộc trò chuyện.', 'Conversation deleted.'],
+  assistantUpdatedAt: ['Cập nhật {time}', 'Updated {time}'],
+  assistantDelete: ['Xóa cuộc trò chuyện', 'Delete conversation'],
+  assistantDeleteAction: ['Xóa', 'Delete'],
+  assistantDeleteConfirm: [
+    '“{title}” và các ảnh đã gửi trong đó sẽ bị xóa vĩnh viễn.',
+    '“{title}” and the images sent in it will be deleted permanently.',
+  ],
+  assistantPrompt: ['Câu hỏi của bạn', 'Your question'],
+  assistantPlaceholder: ['Nhập câu hỏi…', 'Type a question…'],
+  assistantSend: ['Gửi câu hỏi', 'Send question'],
+  assistantThinking: ['Trợ lý đang trả lời…', 'The assistant is answering…'],
+  assistantAuthor: ['Trợ lý', 'Assistant'],
+  assistantYou: ['Bạn', 'You'],
+  assistantImage: ['Ảnh đính kèm', 'Attached image'],
+  assistantAddImages: ['Chọn ảnh từ thư mục', 'Choose images from a folder'],
+  assistantRemoveImage: ['Bỏ ảnh', 'Remove image'],
+  assistantImageLimits: [
+    'Tối đa {count} ảnh JPG, PNG hoặc WebP, mỗi ảnh {size} MB, tổng {total} MB.',
+    'Up to {count} JPG, PNG or WebP images, {size} MB each and {total} MB total.',
+  ],
+  assistantInvalidImages: [
+    'Chọn ảnh JPEG, PNG hoặc WebP trong giới hạn số lượng và dung lượng.',
+    'Choose JPEG, PNG or WebP images within the file count and size limits.',
+  ],
+  assistantFileError: ['Không mở được tệp. Hãy thử lại.', 'Could not open the file. Try again.'],
+  assistantCheckHistory: [
+    'Kiểm tra lịch sử trò chuyện trước khi thực hiện lại.',
+    'Check chat history before trying the action again.',
+  ],
+  assistantDiscardQuestion: ['Bỏ câu hỏi đang chờ', 'Discard pending question'],
+  assistantErrorHistory: [
+    'Không tải được lịch sử trò chuyện.',
+    'The conversation history could not be loaded.',
+  ],
+  assistantErrorConversation: [
+    'Không tải được cuộc trò chuyện.',
+    'The conversation could not be loaded.',
+  ],
+  assistantErrorPromptLength: ['Câu hỏi quá dài.', 'The question is too long.'],
+  assistantErrorArchived: [
+    'Cuộc trò chuyện đã được lưu trữ. Hãy bắt đầu cuộc mới.',
+    'This conversation is archived. Start a new one.',
+  ],
+  assistantErrorMissing: [
+    'Không tìm thấy cuộc trò chuyện.',
+    'The conversation could not be found.',
+  ],
+};

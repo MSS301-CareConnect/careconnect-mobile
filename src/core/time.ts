@@ -1,6 +1,21 @@
 export function vietnamDay(now = new Date()): string {
   return new Date(now.getTime() + 7 * 3600000).toISOString().slice(0, 10);
 }
+export function addDays(day: string, amount: number) {
+  return new Date(Date.parse(day + 'T00:00:00Z') + amount * 86400000).toISOString().slice(0, 10);
+}
+export function mondayOf(day: string) {
+  const weekday = new Date(day + 'T00:00:00Z').getUTCDay();
+  return addDays(day, -((weekday + 6) % 7));
+}
+export function isCalendarDay(day: string) {
+  const timestamp = Date.parse(day + 'T00:00:00Z');
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(day) &&
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === day
+  );
+}
 export function formatInstant(value: string, locale: string, options?: Intl.DateTimeFormatOptions) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())

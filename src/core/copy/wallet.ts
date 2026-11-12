@@ -7,8 +7,8 @@ export const walletCopy: Record<string, readonly [string, string]> = {
   walletAvailable: ['Số dư khả dụng', 'Available balance'],
   walletHeld: ['Đang chờ rút', 'Awaiting withdrawal'],
   walletHeldHint: [
-    'Đã trừ khỏi số dư, chờ quản trị viên chuyển khoản.',
-    'Taken from the balance, waiting for the admin transfer.',
+    'Số tiền đã được tạm giữ để xử lý yêu cầu rút.',
+    'This amount is on hold while the withdrawal is processed.',
   ],
   walletWithdraw: ['Rút tiền', 'Withdraw'],
   walletNotWithdrawable: [
@@ -51,8 +51,17 @@ export const walletCopy: Record<string, readonly [string, string]> = {
   walletStatus_COMPLETED: ['Đã chuyển khoản', 'Transferred'],
   walletWithdrawTitle: ['Rút tiền về ngân hàng', 'Withdraw to bank'],
   walletWithdrawHint: [
-    'Số tiền được tạm giữ ngay khi gửi. Quản trị viên duyệt và chuyển khoản thủ công; nếu bị từ chối, tiền quay lại số dư.',
-    'The amount is held as soon as you send. An admin approves and transfers it by hand; if rejected, the money returns to your balance.',
+    'Chọn nguồn số dư và tài khoản nhận tiền. Số tiền được tạm giữ khi gửi và hoàn lại vào ví nếu yêu cầu bị từ chối.',
+    'Choose a balance source and the receiving account. The amount is held when you submit and returned to your wallet if the request is rejected.',
+  ],
+  walletSource: ['Nguồn số dư', 'Balance source'],
+  walletPlatformSource: ['Số dư nền tảng', 'Platform balance'],
+  walletUnnamedCenter: ['Trung tâm {number}', 'Center {number}'],
+  walletNoSources: ['Chưa có số dư khả dụng để rút.', 'There is no available balance to withdraw.'],
+  walletChooseSource: ['Chọn nguồn số dư để tiếp tục.', 'Choose a balance source to continue.'],
+  walletCheckHistory: [
+    'Kiểm tra danh sách yêu cầu trong Ví trước khi gửi yêu cầu mới.',
+    'Check withdrawal requests in My wallet before submitting again.',
   ],
   walletAmount: ['Số tiền muốn rút (₫)', 'Amount to withdraw (₫)'],
   walletAmountMax: ['Tối đa', 'Up to'],

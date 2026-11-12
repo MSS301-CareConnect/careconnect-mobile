@@ -24,6 +24,7 @@ import { VisitCard } from '../visits/card';
 import { CareBanner } from './care-banner';
 import { useBookingRequestCount } from '../booking-requests/use-request-count';
 import { AbsenceRepository } from '../absences/repository';
+import { WeekStats } from './week-stats';
 
 export function HomeScreen() {
   const { api, t, user, locale } = useApp();
@@ -37,8 +38,8 @@ export function HomeScreen() {
   );
   // Missed visits still waiting for the caregiver's explanation; a failed read only hides the prompt.
   const absenceRepo = useMemo(() => new AbsenceRepository(api), [api]);
-  const absences = useRemote(useCallback(() => absenceRepo.list('PENDING'), [absenceRepo]));
-  const pendingAbsences = absences.data?.totalElements ?? 0;
+  const absences = useRemote(useCallback(() => absenceRepo.unexplainedCount(), [absenceRepo]));
+  const pendingAbsences = absences.data ?? 0;
   const nav = useNavigation<NativeStackNavigationProp<Routes>>();
   useEffect(() => {
     if (previousDay.current !== day) {
@@ -217,6 +218,7 @@ export function HomeScreen() {
           </>
         )}
       </RemoteState>
+      <WeekStats today={day} />
     </Screen>
   );
 }

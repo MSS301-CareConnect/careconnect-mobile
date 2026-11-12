@@ -1,5 +1,27 @@
 // Caregiver absences (2026-11-10): missed visits the caregiver explains before the center concludes.
 export const absenceCopy: Record<string, readonly [string, string]> = {
+  absencePanelTitle: ['Bạn bị ghi nhận vắng ca ({count})', 'Missed visits recorded ({count})'],
+  absencePanelSummary: [
+    '{bookings} lịch · {waiting} buổi chưa giải trình',
+    '{bookings} bookings · {waiting} visits to explain',
+  ],
+  absencePanelHint: [
+    'Khách đã được hoàn tiền các buổi này. Hãy gửi giải trình để trung tâm xem xét trước khi kết luận.',
+    'Customers have been refunded for these visits. Send an explanation for the center to review.',
+  ],
+  absencePanelLoading: ['Đang kiểm tra ghi nhận vắng ca…', 'Checking for missed visits…'],
+  absencePanelError: ['Không tải được ghi nhận vắng ca.', 'Could not load missed visits.'],
+  absencePanelCount: ['{count} buổi vắng', '{count} missed visits'],
+  absencePanelWaiting: ['{count} buổi chưa giải trình', '{count} visits to explain'],
+  absencePanelOpenBooking: ['Mở lịch', 'Open booking'],
+  absencePanelShowVisits: ['Xem các buổi', 'Show visits'],
+  absencePanelHideVisits: ['Thu gọn', 'Hide visits'],
+  absencePanelExplained: ['Đã giải trình', 'Explanation sent'],
+  absencePanelUnexplained: ['Chưa giải trình', 'Needs explanation'],
+  absenceVisitUnavailable: [
+    'Chưa có hồ sơ vắng mặt cho buổi này.',
+    'There is no absence record for this visit.',
+  ],
   absences: ['Vắng ca', 'Missed visits'],
   absencesHint: [
     'Buổi đã thanh toán mà bạn không check-in. Khách đã được hoàn 100 % tiền buổi đó. Hãy giải trình để trung tâm xem xét trước khi kết luận.',

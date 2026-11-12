@@ -10,7 +10,6 @@ import React, {
 } from 'react';
 import { ActivityIndicator, AppState, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@react-native-vector-icons/feather/static';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import { useApp } from '../../core/app-context';
 import { useRemote, useWrite } from '../../core/hooks';
@@ -92,31 +91,6 @@ const bellStyles = StyleSheet.create({
   },
   countText: { color: colors.white, fontSize: 10, lineHeight: 16 },
 });
-export function NotificationBanner({ onPress }: { onPress: () => void }) {
-  const { t } = useApp();
-  const feed = useNotifications();
-  if (!feed?.banner) return null;
-  return (
-    <SafeAreaView edges={['top']} style={inboxStyles.banner}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t('newNotification')}
-        style={({ pressed }) => ({
-          minHeight: 48,
-          justifyContent: 'center',
-          opacity: pressed ? 0.7 : 1,
-        })}
-        onPress={() => {
-          feed.dismiss();
-          onPress();
-        }}
-      >
-        <Txt style={inboxStyles.bannerLabel}>{t('newNotification')}</Txt>
-      </Pressable>
-      <Button kind="secondary" label={t('close')} onPress={() => feed.dismiss()} />
-    </SafeAreaView>
-  );
-}
 export function NotificationsScreen({ navigation }: Props<'Notifications'>) {
   const { api, t, locale } = useApp();
   const feed = useNotifications();
@@ -196,7 +170,6 @@ export function NotificationsScreen({ navigation }: Props<'Notifications'>) {
     const target = notificationTarget(item);
     if (!target) return;
     if (!item.readAt && !(await mutate(() => repo.setRead(item.id, true)))) return;
-    feed?.dismiss();
     await write.run(async () => {
       if (target.screen === 'BookingRequests') {
         navigation.navigate('Tabs', {
@@ -217,6 +190,7 @@ export function NotificationsScreen({ navigation }: Props<'Notifications'>) {
       } else if (target.screen === 'Visit') navigation.navigate('Visit', { id: target.id });
       else if (target.screen === 'Session') navigation.navigate('Session', { id: target.id });
       else if (target.screen === 'Absences') navigation.navigate('Absences');
+      else if (target.screen === 'Wallet') navigation.navigate('Wallet');
     });
   }
   return (
@@ -573,6 +547,10 @@ function notificationVisual(type: string): {
     return { icon: 'map-pin', color: colors.info, background: colors.infoBg };
   if (type === 'REPORT_SUBMITTED')
     return { icon: 'file-text', color: colors.primary, background: colors.pale };
+  if (type === 'WALLET_WITHDRAWAL_COMPLETED')
+    return { icon: 'check-circle', color: colors.primary, background: colors.pale };
+  if (type === 'WALLET_WITHDRAWAL_REJECTED')
+    return { icon: 'x-circle', color: colors.danger, background: colors.dangerBg };
   if (['SESSION_ENDED', 'BOOKING_COMPLETED', 'REFUND_COMPLETED'].includes(type))
     return { icon: 'check-circle', color: colors.primary, background: colors.pale };
   return { icon: 'bell', color: colors.primary, background: colors.pale };
@@ -634,8 +612,6 @@ function NotificationAction({
   );
 }
 const inboxStyles = StyleSheet.create({
-  banner: { backgroundColor: colors.pale, padding: 16, gap: 8 },
-  bannerLabel: { fontWeight: '700', color: colors.primary },
   content: { gap: 12, paddingTop: 12 },
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   segments: {

@@ -1,5 +1,5 @@
 import { ApiClient, ApiError } from '../../core/api';
-import { page } from '../../core/json';
+import { array, object, page, required } from '../../core/json';
 import { vietnamDay } from '../../core/time';
 import { parseVisit, Visit } from './models';
 import { visitWindow, waitingForNoShow } from './actions';
@@ -53,13 +53,14 @@ export class VisitRepository {
       )
     );
   }
-  // Mọi buổi của caregiver trong một booking (trang booking): đọc hết các trang 100 buổi.
-  async bookingVisits(bookingId: string) {
+  async allVisits(from?: string, to?: string, bookingId?: string) {
     const rows: Visit[] = [];
     for (let p = 0; ; p++) {
       const result = page(
         await this.api.request('GET', '/booking-occurrences', undefined, {
           bookingId,
+          ...(from ? { from } : {}),
+          ...(to ? { to } : {}),
           page: p,
           size: 100,
         }),
@@ -68,12 +69,49 @@ export class VisitRepository {
       rows.push(...result.items);
       if (p + 1 >= result.totalPages) break;
     }
-    return rows.sort((a, b) => a.startAt.localeCompare(b.startAt));
+    return rows.sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+  }
+  bookingVisits(bookingId: string, day?: string) {
+    return this.allVisits(day, day, bookingId);
+  }
+  async acknowledgeMany(visits: Visit[]) {
+    const bookingId = visits[0]?.bookingId;
+    const ids = new Set(visits.map((visit) => visit.id));
+    if (
+      !bookingId ||
+      ids.size > 100 ||
+      ids.size !== visits.length ||
+      visits.some((visit) => visit.bookingId !== bookingId)
+    )
+      throw new Error('Invalid acknowledgement batch');
+    const result = await this.api.request('POST', '/booking-occurrences/acknowledgements', {
+      occurrenceIds: [...ids],
+    });
+    try {
+      const acknowledged = array(result).map(parseVisit);
+      if (
+        acknowledged.some(
+          (visit) =>
+            visit.status !== 'ACKNOWLEDGED' ||
+            visit.bookingId !== bookingId ||
+            !ids.delete(visit.id),
+        ) ||
+        ids.size
+      )
+        throw new Error('Inconsistent acknowledgement response');
+      return acknowledged;
+    } catch {
+      throw new ApiError(0, 0, true);
+    }
   }
   // POST /caregiver-withdrawals: một hoặc nhiều buổi của cùng booking; OTHER bắt buộc ghi chú (BE kiểm lại 24h / chủ buổi).
   async withdraw(occurrenceIds: string[], reasonCode: 'PERSONAL' | 'OTHER', reasonDetail: string) {
     const detail = reasonDetail.trim();
-    if (!occurrenceIds.length || occurrenceIds.length > 60)
+    if (
+      !occurrenceIds.length ||
+      occurrenceIds.length > 60 ||
+      new Set(occurrenceIds).size !== occurrenceIds.length
+    )
       throw new Error('Invalid withdrawal visits');
     if (reasonCode === 'OTHER' && !detail) throw new Error('Withdrawal reason required');
     if (detail.length > 1000) throw new Error('Withdrawal reason too long');
@@ -83,9 +121,20 @@ export class VisitRepository {
       reasonDetail: detail || undefined,
     });
     // Phản hồi thành công nhưng sai dạng = chưa rõ kết quả, không coi là lỗi an toàn để gửi lại.
-    if (!Array.isArray(result) || result.length !== occurrenceIds.length)
+    try {
+      const pending = new Set(occurrenceIds);
+      const rows = array(result);
+      for (const value of rows) {
+        const row = object(value);
+        required(row.id);
+        if (!pending.delete(required(row.occurrenceId)))
+          throw new Error('Inconsistent withdrawal response');
+      }
+      if (pending.size) throw new Error('Incomplete withdrawal response');
+      return rows.length;
+    } catch {
       throw new ApiError(0, 0, true);
-    return result.length;
+    }
   }
   async visit(id: string) {
     return parseVisit(await this.api.request('GET', `/booking-occurrences/${id}`));

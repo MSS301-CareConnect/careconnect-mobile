@@ -1,15 +1,17 @@
 import React from 'react';
 import { Alert } from 'react-native';
 import { expect, jest, test } from '@jest/globals';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApiClient } from '../src/core/api';
 import { AppProvider, useApp } from '../src/core/app-context';
-import { formatInstant } from '../src/core/time';
+import { addDays, formatInstant, mondayOf, vietnamDay } from '../src/core/time';
+import * as datePicker from '../src/core/date-picker';
 import { Routes } from '../src/app/routes';
 import { VisitScreen, VisitsScreen } from '../src/features/visits/screens';
+import { displayVisitDate } from '../src/features/visits/period';
 const Stack = createNativeStackNavigator<Routes>();
 function Subject() {
   const { user } = useApp();
@@ -55,16 +57,31 @@ function fixture(
     ...initial,
   };
   const writes: { path: string; body: unknown }[] = [];
+  const listReads: URLSearchParams[] = [];
+  const listRows: (typeof visit)[] = [];
   const controls = { failure, readFailure: false, commitOnFailure: false };
   const client = new ApiClient(
     'http://test',
     { get: async () => 'r', set: async () => undefined },
     async (input, init) => {
-      const path = new URL(String(input)).pathname.replace('/api/v1', '');
+      const url = new URL(String(input));
+      const path = url.pathname.replace('/api/v1', '');
       let result: unknown;
       if (path === '/auth/refresh') result = { accessToken: 'a', refreshToken: 'r' };
       else if (path === '/users/me') result = { id: 'u', roles: ['CAREGIVER'], status: 'ACTIVE' };
-      else if (path === '/booking-occurrences' || path === '/bookings/caregiver-requests')
+      else if (path === '/booking-occurrences') {
+        const query = url.searchParams;
+        listReads.push(query);
+        const items = listRows.filter((row) => {
+          const day = vietnamDay(new Date(row.startAt));
+          return (
+            (!query.get('status') || row.status === query.get('status')) &&
+            day >= (query.get('from') ?? '') &&
+            day <= (query.get('to') ?? '9999-12-31')
+          );
+        });
+        result = { items, page: 0, totalPages: items.length ? 1 : 0, totalElements: items.length };
+      } else if (path === '/bookings/caregiver-requests')
         result = { items: [], page: 0, totalPages: 0, totalElements: 0 };
       else if (init?.method === 'GET') {
         if (controls.readFailure)
@@ -87,7 +104,7 @@ function fixture(
       return new Response(JSON.stringify({ code: 200, result }));
     },
   );
-  return { client, writes, controls };
+  return { client, writes, controls, listReads, listRows, visit };
 }
 async function open(f: ReturnType<typeof fixture>) {
   const screen = await render(
@@ -249,6 +266,72 @@ test('assigned visits embeds customer requests only in the response tab', async 
       screen.getByText('Khách hàng đã chọn bạn. Trả lời trước hạn để khách tiếp tục thanh toán.'),
     ).toBeTruthy();
   } finally {
+    await screen.unmount();
+  }
+});
+
+test('cancelled tab shows cancelled visits and filters by Vietnam week, month and selected dates', async () => {
+  const f = fixture();
+  const day = vietnamDay();
+  for (const [status, recipientName] of [
+    ['CANCELLED', 'Ca đã hủy'],
+    ['EXPIRED', 'Ca hết hạn'],
+    ['COMPLETED', 'Ca hoàn thành'],
+  ] as const) {
+    f.listRows.push({
+      ...f.visit,
+      id: status,
+      recipientName,
+      status,
+      startAt: day + 'T10:00:00+07:00',
+    });
+  }
+  const picker = jest.spyOn(datePicker, 'pickCalendarDate').mockResolvedValue(day);
+  const screen = await render(
+    <SafeAreaProvider>
+      <AppProvider client={f.client}>
+        <ListSubject />
+      </AppProvider>
+    </SafeAreaProvider>,
+  );
+  try {
+    await fireEvent.press(await screen.findByRole('tab', { name: 'Đã hủy' }));
+    await screen.findByText('Ca đã hủy');
+    expect(screen.queryByText('Ca hết hạn')).toBeNull();
+    expect(screen.queryByText('Ca hoàn thành')).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Lịch sử' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Tháng này' })).toHaveProp('accessibilityState', {
+      selected: true,
+    });
+    expect(f.listReads.at(-1)?.get('from')).toBe(day.slice(0, 7) + '-01');
+    expect(f.listReads.at(-1)?.get('status')).toBe('CANCELLED');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Tuần này' }));
+    await screen.findByText('Ca đã hủy');
+    expect(f.listReads.at(-1)?.get('from')).toBe(mondayOf(day));
+    expect(f.listReads.at(-1)?.get('to')).toBe(addDays(mondayOf(day), 6));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Tùy chọn' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Chọn ngày bắt đầu' }));
+    expect(picker).toHaveBeenCalledWith(
+      addDays(day, -30),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('Từ ngày')).toHaveProp('value', displayVisitDate(day)),
+    );
+    expect(f.listReads.at(-1)?.get('from')).toBe(day);
+    expect(f.listReads.at(-1)?.get('to')).toBe(day);
+    expect(f.listReads.at(-1)?.get('status')).toBe('CANCELLED');
+
+    const reads = f.listReads.length;
+    await fireEvent.changeText(screen.getByLabelText('Từ ngày'), '31/02/2026');
+    await screen.findByText('Nhập ngày hợp lệ theo DD/MM/YYYY.');
+    expect(f.listReads).toHaveLength(reads);
+  } finally {
+    picker.mockRestore();
     await screen.unmount();
   }
 });

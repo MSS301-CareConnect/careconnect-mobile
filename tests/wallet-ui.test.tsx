@@ -39,6 +39,12 @@ function fixture() {
           heldBalance: 90000 - available,
           withdrawable: available > 0,
         };
+      else if (path === '/wallets/me/center-balances')
+        result = [
+          { centerId: 'center-a', availableBalance: 60000 },
+          { centerId: null, availableBalance: 30000 },
+        ];
+      else if (path === '/care-centers/center-a') result = { centerName: 'Trung tâm An Tâm' };
       else if (path === '/wallets/me/statistics')
         result = {
           forfeitIncome: 90000,
@@ -100,8 +106,10 @@ test('wallet shows the balance and ledger, checks the withdrawal form and lists 
     expect(screen.getAllByText(/90\.000/).length).toBeGreaterThan(0);
     expect(screen.getByText('Bạn chưa gửi yêu cầu rút tiền nào.')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Rút tiền' }));
-    await screen.findByText('Rút tiền về ngân hàng');
-    await fireEvent.changeText(screen.getByLabelText('Số tiền muốn rút (₫)'), '100000');
+    await screen.findByText('Chọn nguồn số dư để tiếp tục.');
+    expect(screen.getByRole('button', { name: 'Gửi yêu cầu rút tiền' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: /Trung tâm An Tâm/ }));
+    await fireEvent.changeText(screen.getByLabelText('Số tiền muốn rút (₫)'), '70000');
     await fireEvent.press(screen.getByRole('button', { name: 'Gửi yêu cầu rút tiền' }));
     expect(screen.getByText('Số tiền vượt quá số dư khả dụng.')).toBeTruthy();
     expect(screen.getByText('Nhập tên ngân hàng.')).toBeTruthy();
@@ -114,7 +122,8 @@ test('wallet shows the balance and ledger, checks the withdrawal form and lists 
     await screen.findByText('Chờ duyệt');
     expect(f.posted).toEqual([
       {
-        amount: 90000,
+        amount: 60000,
+        centerId: 'center-a',
         bankName: 'Vietcombank',
         bankAccountNumber: '0123456789',
         accountHolderName: 'TRAN THI B',

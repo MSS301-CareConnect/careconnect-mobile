@@ -15,6 +15,11 @@ export type WithdrawalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED'
 export type WalletPeriod = 'month' | 'last30' | 'year';
 export type WalletRange = { from: string; to: string; groupBy: 'DAY' | 'MONTH' };
 export type Wallet = { availableBalance: number; heldBalance: number; withdrawable: boolean };
+export type WalletCenterBalance = {
+  centerId: string | null;
+  availableBalance: number;
+  name: string;
+};
 export type WalletTransaction = {
   id: string;
   type: WalletTransactionType;
@@ -50,6 +55,7 @@ export type WithdrawalForm = {
   accountHolderName: string;
 };
 export type WithdrawalInput = {
+  centerId?: string | null;
   amount: number;
   bankName: string;
   bankAccountNumber: string;
@@ -75,6 +81,13 @@ function money(value: unknown) {
   const parsed = number(value);
   if (parsed === undefined) throw new Error('Invalid wallet amount');
   return parsed;
+}
+export function parseWalletCenterBalance(value: unknown): Omit<WalletCenterBalance, 'name'> {
+  const j = object(value);
+  return {
+    centerId: j.centerId == null ? null : required(j.centerId),
+    availableBalance: money(j.availableBalance),
+  };
 }
 function oneOf<T extends string>(value: unknown, values: readonly T[], what: string): T {
   const found = values.find((item) => item === value);

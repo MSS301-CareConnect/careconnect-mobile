@@ -5,63 +5,55 @@ import {
   parseNotification,
 } from '../src/features/notifications/feed';
 import { NotificationRepository } from '../src/features/notifications/repository';
-const item = (id: string, createdAt = '2026-11-01T01:00:00Z') => ({
+const item = (id: string) => ({
   id,
   title: 'Title',
   body: 'Body',
-  createdAt,
+  createdAt: '2026-11-01T01:00:00Z',
   refType: 'BOOKING_OCCURRENCE',
   refId: 'f3b57ad4-87ae-4faa-a058-b0aa92ce5e98',
 });
-const page = (items: unknown[]) => ({ items, page: 0, totalPages: 1, totalElements: items.length });
-test('first read seeds silently; only new unread recent IDs alert', async () => {
-  let items = [item('1')];
-  const request = jest.fn(async (_m: string, path: string) =>
-    path.endsWith('unread-count') ? { count: items.length } : page(items),
-  );
+test('foreground polling only reads and updates the unread badge count', async () => {
+  let count = 1;
+  const request = jest.fn(async (_method: string, _path: string) => ({ count }));
   const feed = new NotificationFeed({ request }, () => {});
-  await feed.setActive(true);
-  expect(feed.banner).toBe(false);
-  expect(feed.unread).toBe(1);
-  items = [item('2'), item('1')];
-  await feed.tick();
-  expect(feed.banner).toBe(true);
-  feed.dismiss();
-  await feed.tick();
-  expect(feed.banner).toBe(false);
-  items = [item('old', '2026-10-01T00:00:00Z'), ...items];
-  await feed.tick();
-  expect(feed.banner).toBe(false);
-  feed.dispose();
+  try {
+    await feed.setActive(true);
+    expect(feed.unread).toBe(1);
+    count = 2;
+    await feed.tick();
+    expect(feed.unread).toBe(2);
+    expect(request.mock.calls).toEqual([
+      ['GET', '/notifications/unread-count'],
+      ['GET', '/notifications/unread-count'],
+    ]);
+  } finally {
+    feed.dispose();
+  }
 });
 test('pause discards pending responses and resume reloads', async () => {
   let release!: () => void;
-  let delayed = false;
-  const request = jest.fn(async (_m: string, path: string) => {
-    if (delayed)
-      await new Promise<void>((r) => {
-        release = r;
-      });
-    return path.endsWith('unread-count') ? { count: 9 } : page([item('x')]);
-  });
+  const request = jest.fn(async () => ({ count: 9 }));
   const feed = new NotificationFeed({ request }, () => {});
-  await feed.setActive(true);
-  delayed = true;
-  // One deferred read is enough: unread-count is deliberately delayed separately.
-  request.mockImplementation(async (_m: string, path: string) => {
-    if (path.endsWith('unread-count'))
+  try {
+    await feed.setActive(true);
+    request.mockImplementationOnce(async () => {
       await new Promise<void>((r) => {
         release = r;
       });
-    return path.endsWith('unread-count') ? { count: 20 } : page([item('new')]);
-  });
-  const pending = feed.tick();
-  await feed.setActive(false);
-  release();
-  await pending;
-  expect(feed.unread).toBe(9);
-  expect(feed.banner).toBe(false);
-  feed.dispose();
+      return { count: 20 };
+    });
+    const pending = feed.tick();
+    await feed.setActive(false);
+    release();
+    await pending;
+    expect(feed.unread).toBe(9);
+    request.mockResolvedValueOnce({ count: 15 });
+    await feed.setActive(true);
+    expect(feed.unread).toBe(15);
+  } finally {
+    feed.dispose();
+  }
 });
 test('only known reference types with UUIDs can navigate', () => {
   expect(
@@ -74,19 +66,6 @@ test('only known reference types with UUIDs can navigate', () => {
     screen: 'Visit',
     id: 'f3b57ad4-87ae-4faa-a058-b0aa92ce5e98',
   });
-});
-
-test('notification watermark compares Instants with fractional seconds chronologically', async () => {
-  let items = [item('whole', '2026-11-01T01:00:00Z')];
-  const request = jest.fn(async (_m: string, path: string) =>
-    path.endsWith('unread-count') ? { count: items.length } : page(items),
-  );
-  const feed = new NotificationFeed({ request }, () => {});
-  await feed.setActive(true);
-  items = [item('fraction', '2026-11-01T01:00:00.500Z'), ...items];
-  await feed.tick();
-  expect(feed.banner).toBe(true);
-  feed.dispose();
 });
 
 const bookingId = '2c0917de-cc25-4d1a-a7b9-c2af52183dd4';
@@ -246,8 +225,7 @@ test('a post-write feed refresh waits for an older poll then obtains the fresh s
   let release!: () => void;
   const feed = new NotificationFeed(
     {
-      request: async (_method, path) => {
-        if (!path.endsWith('unread-count')) return page([item('notice')]);
+      request: async () => {
         const capturedCount = count;
         if (defer) {
           defer = false;
@@ -276,8 +254,7 @@ test('malformed unread counts retain the previous badge instead of inventing a n
   let count: unknown = 3;
   const feed = new NotificationFeed(
     {
-      request: async (_method, path) =>
-        path.endsWith('unread-count') ? { count } : page([item('notice')]),
+      request: async () => ({ count }),
     },
     () => {},
   );

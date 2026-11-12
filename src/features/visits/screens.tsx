@@ -1,18 +1,14 @@
 // @refresh reset
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { NavigationProp, RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useApp } from '../../core/app-context';
-import { useReducedMotion } from '../../core/accessibility';
 import { useRemote } from '../../core/hooks';
-import { formatInstant } from '../../core/time';
+import { addDays, formatInstant } from '../../core/time';
 import {
   Badge,
   Button,
   Card,
-  Chips,
-  Field,
   Info,
   IconButton,
   Pagination,
@@ -30,11 +26,17 @@ import { useBookingRequestCount } from '../booking-requests/use-request-count';
 import { VisitRepository } from './repository';
 import { VisitActionPanel } from './action-panel';
 import { useVietnamDay as useDay } from '../../core/use-vietnam-day';
-import { BookingGroupCard } from './card';
-import { groupVisitsByBooking, statuses } from './models';
+import { BookingGroupCard, VisitCard } from './card';
+import { groupVisitsByBooking } from './models';
 import { VisitWithdrawSection } from './withdraw';
 import { RecipientCard } from './recipient-profile';
 import { AddressActions } from './address-actions';
+import { VisitAbsence } from '../absences/visit-absence';
+import { AbsencePanel } from '../absences/panel';
+import { VisitDateFilter } from './date-filter';
+import { displayVisitDate, VisitDateFields, VisitPeriod, visitPeriodBounds } from './period';
+
+const visitTabs: VisitListRange[] = ['respond', 'today', 'upcoming', 'all', 'cancelled'];
 function useRepo() {
   const { api } = useApp();
   return useMemo(() => new VisitRepository(api), [api]);
@@ -48,7 +50,6 @@ export function VisitsScreen() {
   );
   return (
     <VisitList
-      history={false}
       requestedRange={route.params?.range}
       requestedBookingId={route.params?.bookingId}
       consumeRange={consumeRange}
@@ -56,67 +57,65 @@ export function VisitsScreen() {
   );
 }
 export function HistoryScreen() {
-  return <VisitList history />;
+  return <VisitList cancelledOnly />;
 }
 function VisitList({
-  history,
+  cancelledOnly = false,
   requestedRange,
   requestedBookingId,
   consumeRange,
 }: {
-  history: boolean;
+  cancelledOnly?: boolean;
   requestedRange?: VisitListRange;
   requestedBookingId?: string;
   consumeRange?: () => void;
 }) {
   const { t } = useApp();
-  const reducedMotion = useReducedMotion();
   const repo = useRepo();
   const requests = useBookingRequestCount();
   const day = useDay();
-  const [range, setRange] = useState<string>(requestedRange ?? 'upcoming');
+  const [range, setRange] = useState<VisitListRange>(requestedRange ?? 'upcoming');
   const [bookingId, setBookingId] = useState(requestedBookingId);
   const [responseLocked, setResponseLocked] = useState(false);
   const [requestRefresh, setRequestRefresh] = useState(0);
-  const responding = !history && range === 'respond';
-  const showHistory = history || range === 'history';
-  const [status, setStatus] = useState('');
-  const [draftStatus, setDraftStatus] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [dates, setDates] = useState<{ from?: string; to?: string }>({});
-  const [filter, setFilter] = useState(false);
+  const responding = !cancelledOnly && range === 'respond';
+  const cancelled = cancelledOnly || range === 'cancelled';
+  const upcoming = !cancelledOnly && range === 'upcoming';
+  const today = !cancelledOnly && range === 'today';
+  const [period, setPeriod] = useState<VisitPeriod>();
+  const [custom, setCustom] = useState<VisitDateFields>();
   const [p, setPage] = useState(0);
   useEffect(() => {
-    if (history || !requestedRange) return;
+    if (cancelledOnly || !requestedRange) return;
     setRange(requestedRange);
     setBookingId(requestedBookingId);
-    setDates({});
-    setStatus('');
+    setCustom(undefined);
+    setPeriod(undefined);
     setPage(0);
-    setFilter(false);
     consumeRange?.();
-  }, [history, requestedRange, requestedBookingId, consumeRange]);
+  }, [cancelledOnly, requestedRange, requestedBookingId, consumeRange]);
   const toConfirm = useRemote(
     useCallback(() => repo.visits(0, day, undefined, 'SCHEDULED'), [repo, day]),
   );
-  const valid =
-    (!from || (/^\d{4}-\d{2}-\d{2}$/.test(from) && !Number.isNaN(Date.parse(from)))) &&
-    (!to || (/^\d{4}-\d{2}-\d{2}$/.test(to) && !Number.isNaN(Date.parse(to)))) &&
-    (!from || !to || from <= to);
+  const selectedPeriod = period ?? (cancelled ? 'month' : undefined);
+  const dates = custom ?? {
+    from: displayVisitDate(upcoming ? day : addDays(day, -30)),
+    to: displayVisitDate(upcoming ? addDays(day, 30) : day),
+  };
+  const bounds = visitPeriodBounds(selectedPeriod, day, dates);
+  const from =
+    responding || today || (upcoming && (!bounds.from || bounds.from < day)) ? day : bounds.from;
+  const to = responding ? undefined : today ? day : bounds.to;
+  const status = responding ? 'SCHEDULED' : cancelled ? 'CANCELLED' : undefined;
+  const dateError = bounds.error;
   const load = useCallback(
     () =>
-      repo.visits(
-        p,
-        showHistory
-          ? undefined
-          : responding
-            ? day
-            : (dates.from ?? (range === 'all' ? undefined : day)),
-        showHistory || responding ? undefined : (dates.to ?? (range === 'today' ? day : undefined)),
-        responding ? 'SCHEDULED' : showHistory ? 'COMPLETED' : status || undefined,
-      ),
-    [repo, p, showHistory, responding, dates, range, day, status],
+      dateError
+        ? Promise.resolve(undefined)
+        : from && to && from > to
+          ? Promise.resolve({ items: [], page: 0, totalPages: 0, totalElements: 0 })
+          : repo.visits(p, from, to, status),
+    [repo, p, dateError, from, to, status],
   );
   const remote = useRemote(load);
   const showCenter = !responding || remote.loading || !!remote.error || !!remote.data?.items.length;
@@ -134,24 +133,12 @@ function VisitList({
     <Screen>
       <Row>
         <View style={styles.grow}>
-          <Title>{t(showHistory ? 'history' : 'assignedVisits')}</Title>
+          <Title>{t(cancelledOnly ? 'CANCELLED' : 'assignedVisits')}</Title>
         </View>
-        {!showHistory && !responding && (
-          <IconButton
-            label={t('visitsFilters')}
-            icon="sliders"
-            onPress={() => {
-              setFrom(dates.from ?? '');
-              setTo(dates.to ?? '');
-              setDraftStatus(status);
-              setFilter(true);
-            }}
-          />
-        )}
         <IconButton
           label={t('refresh')}
           icon="refresh-cw"
-          disabled={remote.loading || responseLocked}
+          disabled={remote.loading || responseLocked || !!dateError}
           onPress={() => {
             void remote.reload();
             refreshResponse();
@@ -159,10 +146,11 @@ function VisitList({
           }}
         />
       </Row>
-      {!history && (
+      {!cancelledOnly && <AbsencePanel refreshKey={requestRefresh} />}
+      {!cancelledOnly && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.toolbar}>
-            {['respond', 'today', 'upcoming', 'all', 'history'].map((value) => (
+            {visitTabs.map((value) => (
               <Pressable
                 key={value}
                 accessibilityRole="tab"
@@ -171,8 +159,8 @@ function VisitList({
                 onPress={() => {
                   setRange(value);
                   setBookingId(undefined);
-                  setDates({});
-                  setStatus('');
+                  setCustom(undefined);
+                  setPeriod(undefined);
                   setPage(0);
                 }}
                 style={({ pressed }) => [
@@ -182,7 +170,7 @@ function VisitList({
                 ]}
               >
                 <Txt style={[styles.toolbarLabel, range === value && styles.toolbarActiveLabel]}>
-                  {t(value)}
+                  {t(value === 'cancelled' ? 'CANCELLED' : value)}
                 </Txt>
                 {value === 'respond' && responseCount !== undefined && responseCount > 0 && (
                   <View style={styles.responseBadge}>
@@ -215,69 +203,47 @@ function VisitList({
           <Txt muted>{t('responseFromCenterHint')}</Txt>
         </View>
       )}
-      {!showHistory && !responding && !!(dates.from || dates.to || status) && (
-        <Txt muted>{t('filtersApplied')}</Txt>
+      {!responding && !today && (
+        <VisitDateFilter
+          key={range}
+          period={selectedPeriod}
+          dates={dates}
+          error={dateError}
+          onChange={(value) => {
+            setPeriod(value);
+            setPage(0);
+          }}
+          onDates={(value) => {
+            setCustom(value);
+            setPage(0);
+          }}
+          onReset={
+            cancelled
+              ? undefined
+              : () => {
+                  setPeriod(undefined);
+                  setCustom(undefined);
+                  setPage(0);
+                }
+          }
+        />
       )}
-      <Modal
-        visible={filter}
-        animationType={reducedMotion ? 'none' : 'fade'}
-        onRequestClose={() => setFilter(false)}
-      >
-        <SafeAreaView style={styles.grow} edges={['top']}>
-          <Screen>
-            <Row>
-              <View style={styles.grow}>
-                <Title>{t('visitsFilters')}</Title>
-              </View>
-              <IconButton label={t('close')} icon="x" onPress={() => setFilter(false)} />
-            </Row>
-            <Field label={t('from')} value={from} onChangeText={setFrom} maxLength={10} />
-            <Field label={t('to')} value={to} onChangeText={setTo} maxLength={10} />
-            <Chips
-              values={['', ...statuses].map((value) => ({ value, label: t(value || 'all') }))}
-              value={draftStatus}
-              onChange={setDraftStatus}
-            />
-            <Button
-              label={t('applyFilters')}
-              disabled={!valid}
-              onPress={() => {
-                setDates({ from: from || undefined, to: to || undefined });
-                setStatus(draftStatus);
-                setRange('all');
-                setPage(0);
-                setFilter(false);
-              }}
-            />
-            <Button
-              label={t('resetFilters')}
-              kind="secondary"
-              onPress={() => {
-                setFrom('');
-                setTo('');
-                setDraftStatus('');
-                setDates({});
-                setStatus('');
-                setRange('upcoming');
-                setPage(0);
-                setFilter(false);
-              }}
-            />
-          </Screen>
-        </SafeAreaView>
-      </Modal>
-      {showCenter && (
+      {showCenter && !dateError && (
         <RemoteState {...remote} retry={remote.reload}>
           {remote.data && (
             <>
               {remote.data.items.length ? (
-                groupVisitsByBooking(remote.data.items).map((group) => (
-                  <BookingGroupCard key={group.bookingId} group={group} />
-                ))
+                cancelled ? (
+                  remote.data.items.map((visit) => <VisitCard key={visit.id} visit={visit} />)
+                ) : (
+                  groupVisitsByBooking(remote.data.items).map((group) => (
+                    <BookingGroupCard key={group.bookingId} group={group} />
+                  ))
+                )
               ) : (
                 <Card>
-                  <Txt>{t('emptyVisits')}</Txt>
-                  <Txt muted>{t('emptyHint')}</Txt>
+                  <Txt>{t(cancelled ? 'visitCancelledEmpty' : 'emptyVisits')}</Txt>
+                  {!cancelled && <Txt muted>{t('emptyHint')}</Txt>}
                 </Card>
               )}
               <Pagination {...remote.data} onChange={setPage} />
@@ -296,7 +262,11 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
   const visit = remote.data;
   return (
     <Screen>
-      <RemoteState {...remote} retry={remote.reload}>
+      <RemoteState
+        loading={remote.loading && !visit}
+        error={visit ? undefined : remote.error}
+        retry={remote.reload}
+      >
         {visit && (
           <>
             <View style={styles.heading}>
@@ -320,7 +290,15 @@ export function VisitScreen({ route, navigation }: Props<'Visit'>) {
                 />
               )}
             </Section>
-            <VisitWithdrawSection visit={visit} repo={repo} reload={remote.reload} />
+            <VisitWithdrawSection
+              visit={visit}
+              repo={repo}
+              reload={remote.reload}
+              unavailable={remote.loading || !!remote.error}
+            />
+            {['CAREGIVER_MISSED', 'MISSED'].includes(visit.status) && (
+              <VisitAbsence bookingId={visit.bookingId} occurrenceId={visit.id} />
+            )}
             <RecipientCard visit={visit} repo={repo} />
             <Section title={t('services')} icon="heart">
               {visit.services.length ? (

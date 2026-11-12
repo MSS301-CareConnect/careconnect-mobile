@@ -21,6 +21,7 @@ import {
 } from '../../core/ui';
 import { Absence, AbsenceStatus, EXPLANATION_MAX, checkExplanation } from './models';
 import { AbsenceRepository } from './repository';
+import { useAbsenceVisitLabel } from './presentation';
 
 const TONES: Record<AbsenceStatus, BadgeTone> = {
   PENDING: 'warning',
@@ -29,18 +30,9 @@ const TONES: Record<AbsenceStatus, BadgeTone> = {
 };
 type Filter = 'PENDING' | 'ALL';
 
-function useVisitLabel() {
-  const { t, locale } = useApp();
-  return (item: Absence) =>
-    `${t('absenceVisit').replace('{number}', String(item.occurrenceNo ?? ''))} · ${formatInstant(
-      item.startAt,
-      locale,
-    )} – ${formatInstant(item.endAt, locale, { hour: '2-digit', minute: '2-digit' })}`;
-}
-
 function AbsenceCard({ item, onExplain }: { item: Absence; onExplain: () => void }) {
   const { t, locale } = useApp();
-  const visitLabel = useVisitLabel();
+  const visitLabel = useAbsenceVisitLabel();
   return (
     <Card>
       <View style={styles.row}>
@@ -130,7 +122,7 @@ export function AbsencesScreen({ navigation }: Props<'Absences'>) {
 export function AbsenceExplainScreen({ navigation, route }: Props<'AbsenceExplain'>) {
   const { api, t } = useApp();
   const repo = useMemo(() => new AbsenceRepository(api), [api]);
-  const visitLabel = useVisitLabel();
+  const visitLabel = useAbsenceVisitLabel();
   const id = route.params.id;
   const remote = useRemote(useCallback(() => repo.get(id), [repo, id]));
   const write = useWrite();
@@ -157,10 +149,16 @@ export function AbsenceExplainScreen({ navigation, route }: Props<'AbsenceExplai
       () => setSent(true),
     );
   }
+  async function reconcile() {
+    const saved = await remote.reload();
+    if (!saved) return;
+    if (saved.explanation === value.trim()) setSent(true);
+    write.reset();
+  }
   return (
     <Screen>
       <PageHeader title={t('absenceExplainTitle')} description={t('absenceExplainHint')} />
-      <RemoteState {...remote} retry={() => void remote.reload()}>
+      <RemoteState {...remote} retry={write.uncertain ? reconcile : remote.reload}>
         {remote.data &&
           (remote.data.status !== 'PENDING' ? (
             <Card>
@@ -175,6 +173,7 @@ export function AbsenceExplainScreen({ navigation, route }: Props<'AbsenceExplai
                 multiline
                 maxLength={EXPLANATION_MAX}
                 value={value}
+                editable={!write.busy && !write.uncertain}
                 onChangeText={(next) => {
                   setDraft(next);
                   setError(undefined);
@@ -193,6 +192,9 @@ export function AbsenceExplainScreen({ navigation, route }: Props<'AbsenceExplai
                   }
                 />
               ) : null}
+              {write.uncertain && (
+                <Button label={t('requestReconcile')} kind="secondary" onPress={reconcile} />
+              )}
               <Button
                 icon="send"
                 label={t('absenceSubmit')}

@@ -9,6 +9,13 @@ import {
   visitErrorKey,
 } from '../src/features/visits/actions';
 import { ApiError } from '../src/core/api';
+import { visitPeriodBounds } from '../src/features/visits/period';
+import {
+  acceptableVisits,
+  dayWithdrawal,
+  groupVisitDays,
+  withdrawalBatches,
+} from '../src/features/visits/booking-days';
 const json = {
   id: 'v',
   bookingId: 'b',
@@ -17,6 +24,70 @@ const json = {
   checkInClosesAt: '2030-01-01T01:10:00Z',
   status: 'SCHEDULED',
 };
+test('visit periods use full calendar months and reject impossible or reversed custom dates', () => {
+  const custom = { from: '29/02/2028', to: '29/02/2028' };
+  expect(visitPeriodBounds('month', '2028-02-13', custom)).toEqual({
+    from: '2028-02-01',
+    to: '2028-02-29',
+  });
+  expect(visitPeriodBounds('custom', '2028-02-13', custom)).toEqual({
+    from: '2028-02-29',
+    to: '2028-02-29',
+  });
+  expect(visitPeriodBounds('custom', '2028-02-13', { ...custom, to: '30/02/2028' })).toEqual({
+    error: 'visitPeriodInvalid',
+  });
+  expect(visitPeriodBounds('custom', '2028-02-13', { ...custom, to: '28/02/2028' })).toEqual({
+    error: 'visitPeriodReversed',
+  });
+});
+test('bulk acknowledgment is a single booking write and checks the returned visits', async () => {
+  const visits = ['v', 'x'].map((id) => parseVisit({ ...json, id }));
+  const request = jest.fn(async (_method: string, _path: string, _body: unknown) =>
+    visits.map((item) => ({ ...json, id: item.id, status: 'ACKNOWLEDGED' })),
+  );
+  const repo = new VisitRepository({ request });
+  await expect(
+    repo.acknowledgeMany([visits[0]!, { ...visits[1]!, bookingId: 'other' }]),
+  ).rejects.toThrow();
+  expect(request).not.toHaveBeenCalled();
+  await expect(repo.acknowledgeMany(visits)).resolves.toHaveLength(2);
+  expect(request).toHaveBeenCalledWith('POST', '/booking-occurrences/acknowledgements', {
+    occurrenceIds: ['v', 'x'],
+  });
+  request.mockResolvedValueOnce([{ ...json, id: 'wrong', status: 'ACKNOWLEDGED' }]);
+  await expect(repo.acknowledgeMany(visits)).rejects.toMatchObject({ uncertain: true });
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+test('withdrawal covers each Vietnam calendar day and never splits a day between requests', () => {
+  const one = parseVisit({ ...json, startAt: '2029-12-31T18:00:00Z' });
+  const two = parseVisit({ ...json, id: 'two' });
+  const three = parseVisit({
+    ...json,
+    id: 'three',
+    startAt: '2030-01-01T18:00:00Z',
+    endAt: '2030-01-01T19:00:00Z',
+  });
+  expect(
+    [...groupVisitDays([three, two, one])].map(([day, visits]) => [
+      day,
+      visits.map((item) => item.id),
+    ]),
+  ).toEqual([
+    ['2030-01-01', ['v', 'two']],
+    ['2030-01-02', ['three']],
+  ]);
+  expect(dayWithdrawal([one, two], Date.parse(one.startAt) - 86400000)).toEqual({
+    visits: [one, two],
+    allowed: false,
+  });
+  expect(dayWithdrawal([one, two], Date.parse(one.startAt) - 86400001).allowed).toBe(true);
+  expect(acceptableVisits([one, { ...two, needsReassignment: true }], 0)).toEqual([one]);
+  const dayOne = Array.from({ length: 59 }, (_, index) => ({ ...one, id: `day1-${index}` }));
+  const dayTwo = [three, { ...three, id: 'last' }];
+  expect(withdrawalBatches([...dayOne, ...dayTwo])).toEqual([dayOne, dayTwo]);
+});
 test('care start obeys the server window and exclusive end; a visit not accepted in time starts directly', () => {
   const opens = '2030-01-01T00:45:00Z';
   const visit = parseVisit({ ...json, checkInOpensAt: opens });
@@ -146,7 +217,7 @@ test('a visit can be withdrawn only when it starts more than 24 hours later and 
 test('withdrawal sends the visits and reason, validates OTHER and treats a malformed success as uncertain', async () => {
   const request = jest.fn(async (_method: string, _path: string, body?: unknown) => {
     const ids = (body as { occurrenceIds: string[] }).occurrenceIds;
-    return ids.map((id) => ({ id: 'w-' + id }));
+    return ids.map((id) => ({ id: 'w-' + id, occurrenceId: id }));
   });
   const repo = new VisitRepository({ request });
   await expect(repo.withdraw(['v'], 'OTHER', '   ')).rejects.toThrow();
