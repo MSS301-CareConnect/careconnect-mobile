@@ -25,6 +25,7 @@ import {
   IconButton,
   Info,
   PageHeader,
+  Pagination,
   RemoteState,
   Row,
   Screen,
@@ -63,6 +64,7 @@ const asDraft = (value: Certificate): CertificateDraft => ({
 });
 const uncertain = (error: unknown) =>
   error instanceof ApiError && (error.uncertain || error.status === 409);
+const PAGE_SIZE = 6;
 
 export function CertificatesScreen() {
   const { api, t } = useApp();
@@ -74,6 +76,10 @@ export function CertificatesScreen() {
       return { caregiverId: profile.id, certificates: await repo.certificates(profile.id) };
     }, [repo]),
   );
+  const [pageIndex, setPageIndex] = useState(0);
+  const certificates = remote.data?.certificates ?? [];
+  const totalPages = Math.ceil(certificates.length / PAGE_SIZE);
+  const currentPage = Math.min(pageIndex, Math.max(0, totalPages - 1));
   const [visible, setVisible] = useState(false);
   const formScroll = useRef<React.ElementRef<typeof ScrollView>>(null);
   const [existing, setExisting] = useState<Certificate>();
@@ -330,56 +336,66 @@ export function CertificatesScreen() {
                 <Txt>{t('certEmpty')}</Txt>
               </Card>
             )}
-            {remote.data?.certificates.map((item) => (
-              <Card key={item.id}>
-                <Txt accessibilityRole="header" style={styles.heading}>
-                  {item.name}
-                </Txt>
-                <Info label={t('certIssuer')} value={item.issuedBy} />
-                <Badge
-                  status={
-                    ['PENDING', 'CENTER_VERIFIED', 'ADMIN_VERIFIED', 'REJECTED'].includes(
-                      item.status,
-                    )
-                      ? `cert_${item.status}`
-                      : item.status
-                  }
-                  tone={
-                    item.status === 'REJECTED'
-                      ? 'danger'
-                      : item.status === 'ADMIN_VERIFIED'
-                        ? 'success'
-                        : item.status === 'CENTER_VERIFIED'
-                          ? 'info'
-                          : 'warning'
-                  }
-                />
-                {!!item.reason && <Info label={t('certReason')} value={item.reason} />}
-                <Info label={t('certCredential')} value={item.credential} />
-                <Info label={t('certIssueDate')} value={item.issuedDate} />
-                <Info label={t('certExpiryDate')} value={item.expiryDate} />
-                <View style={styles.pairedActions}>
-                  <Button
-                    kind="secondary"
-                    label={t('certView')}
-                    accessibilityLabel={`${t('certView')}: ${item.name}`}
-                    style={styles.pairedButton}
-                    disabled={locked}
-                    onPress={() => openCertificate(item)}
+            {certificates
+              .slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+              .map((item) => (
+                <Card key={item.id}>
+                  <Txt accessibilityRole="header" style={styles.heading}>
+                    {item.name}
+                  </Txt>
+                  <Info label={t('certIssuer')} value={item.issuedBy} />
+                  <Badge
+                    status={
+                      ['PENDING', 'CENTER_VERIFIED', 'ADMIN_VERIFIED', 'REJECTED'].includes(
+                        item.status,
+                      )
+                        ? `cert_${item.status}`
+                        : item.status
+                    }
+                    tone={
+                      item.status === 'REJECTED'
+                        ? 'danger'
+                        : item.status === 'ADMIN_VERIFIED'
+                          ? 'success'
+                          : item.status === 'CENTER_VERIFIED'
+                            ? 'info'
+                            : 'warning'
+                    }
                   />
-                  <Button
-                    kind="danger"
-                    label={t('remove')}
-                    accessibilityLabel={`${t('certDelete')}: ${item.name}`}
-                    style={styles.pairedButton}
-                    disabled={locked}
-                    onPress={() => {
-                      removeCertificate(item);
-                    }}
-                  />
-                </View>
-              </Card>
-            ))}
+                  {!!item.reason && <Info label={t('certReason')} value={item.reason} />}
+                  <Info label={t('certCredential')} value={item.credential} />
+                  <Info label={t('certIssueDate')} value={item.issuedDate} />
+                  <Info label={t('certExpiryDate')} value={item.expiryDate} />
+                  <View style={styles.pairedActions}>
+                    <Button
+                      kind="secondary"
+                      label={t('certView')}
+                      accessibilityLabel={`${t('certView')}: ${item.name}`}
+                      style={styles.pairedButton}
+                      disabled={locked}
+                      onPress={() => openCertificate(item)}
+                    />
+                    <Button
+                      kind="danger"
+                      label={t('remove')}
+                      accessibilityLabel={`${t('certDelete')}: ${item.name}`}
+                      style={styles.pairedButton}
+                      disabled={locked}
+                      onPress={() => {
+                        removeCertificate(item);
+                      }}
+                    />
+                  </View>
+                </Card>
+              ))}
+            {totalPages > 1 && (
+              <Pagination
+                page={currentPage}
+                totalPages={totalPages}
+                totalElements={certificates.length}
+                onChange={setPageIndex}
+              />
+            )}
           </RemoteState>
         </Screen>
       </View>

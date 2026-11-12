@@ -74,7 +74,7 @@ test('today section opens the assigned visits screen through View all', async ()
   try {
     await screen.findByText('Sắp bắt đầu');
     await fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả' }));
-    expect(await screen.findByRole('button', { name: 'Bộ lọc buổi chăm sóc' })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'Hôm nay', selected: true })).toBeTruthy();
     expect(await screen.findByText('Test first recipient')).toBeTruthy();
     await waitFor(() => {
       const query = f.requests
@@ -108,12 +108,12 @@ test('Home reads the request count and the response tab loads the full request l
   }
 });
 
-test('View all resets previously selected history to the Vietnam day range', async () => {
+test('View all resets the cancelled tab to the Vietnam day range', async () => {
   const f = fixture();
   const screen = await render(<App client={f.api} />);
   try {
     await fireEvent.press(await screen.findByRole('tab', { name: /Buổi được giao/ }));
-    await fireEvent.press(screen.getByRole('tab', { name: 'Lịch sử' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Đã hủy' }));
     await waitFor(() => {
       const query = f.requests
         .filter(
@@ -121,7 +121,7 @@ test('View all resets previously selected history to the Vietnam day range', asy
             request.path === '/booking-occurrences' && request.query.get('status') !== 'SCHEDULED',
         )
         .at(-1)?.query;
-      expect(query?.get('status')).toBe('COMPLETED');
+      expect(query?.get('status')).toBe('CANCELLED');
     });
     await fireEvent.press(screen.getByTestId('home-tab'));
     await fireEvent.press(screen.getByRole('button', { name: 'Xem tất cả' }));
@@ -178,7 +178,7 @@ test('an empty day opens upcoming visits with the Vietnam start date and no end 
   try {
     await screen.findByText('Hôm nay bạn chưa có buổi nào');
     await fireEvent.press(screen.getByRole('button', { name: 'Xem buổi sắp tới' }));
-    expect(await screen.findByRole('button', { name: 'Bộ lọc buổi chăm sóc' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Tuần này' })).toBeTruthy();
     await waitFor(() => {
       const query = f.requests
         .filter((request) => request.path === '/booking-occurrences')

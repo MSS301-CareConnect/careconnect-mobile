@@ -359,6 +359,12 @@ export function ProfileScreen() {
         <ProfileLink label={t('absences')} icon="user-x" onPress={() => nav.navigate('Absences')} />
         <View style={profileStyles.divider} />
         <ProfileLink
+          label={t('assistantTitle')}
+          icon="message-circle"
+          onPress={() => nav.navigate('Assistant')}
+        />
+        <View style={profileStyles.divider} />
+        <ProfileLink
           label={t('keptDeposits')}
           icon="credit-card"
           onPress={() => nav.navigate('KeptDeposits')}

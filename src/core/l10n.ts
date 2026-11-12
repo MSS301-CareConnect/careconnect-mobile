@@ -7,6 +7,7 @@ import { recipientCopy } from './copy/recipient';
 import { walletCopy } from './copy/wallet';
 import { absenceCopy } from './copy/absence';
 import { landingCopy } from './copy/landing';
+import { assistantCopy } from './copy/assistant';
 
 export const copy = {
   app: ['CareConnect', 'CareConnect'],
@@ -342,10 +343,6 @@ export const copy = {
   readAll: ['Đọc tất cả', 'Mark all read'],
   read: ['Đánh dấu đã đọc', 'Mark read'],
   unread: ['Chưa đọc', 'Unread'],
-  newNotification: [
-    'Bạn có thông báo CareConnect mới.',
-    'You have a new CareConnect notification.',
-  ],
   inboxHint: [
     'Thông báo lịch mới và thay đổi lịch cập nhật khi ứng dụng đang mở.',
     'New assignments and schedule changes update while the app is open.',
@@ -391,6 +388,7 @@ export const copy = {
   caregiverStatus: ['Trạng thái chuyên môn', 'Professional status'],
   viewFile: ['Xem tài liệu', 'View document'],
   ...bookingCopy,
+  ...assistantCopy,
   ...workCopy,
   ...notificationCopy,
   ...profileCopy,

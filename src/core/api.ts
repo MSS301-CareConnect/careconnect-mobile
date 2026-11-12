@@ -72,6 +72,7 @@ export class ApiClient {
     body?: unknown,
     query?: Record<string, string | number | undefined>,
     access?: string | null,
+    timeoutMs = 20000,
   ) {
     if (!path.startsWith('/') || path.startsWith('//') || path.includes('..') || path.includes('?'))
       throw new Error('Invalid gateway path');
@@ -80,7 +81,7 @@ export class ApiClient {
       if (v !== undefined) params.set(k, String(v));
     });
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
       const headers: Record<string, string> = {
@@ -116,7 +117,7 @@ export class ApiClient {
         throw new ApiError(
           response.status,
           typeof j.code === 'number' ? j.code : 0,
-          method !== 'GET' && response.status >= 500,
+          method !== 'GET' && (response.status >= 500 || response.status === 408),
         );
       return j.result;
     } catch (e) {
@@ -168,6 +169,7 @@ export class ApiClient {
     path: string,
     body?: unknown,
     query?: Record<string, string | number | undefined>,
+    options?: { timeoutMs?: number },
   ): Promise<unknown> {
     const epoch = this.epoch,
       sentAccess = this.access;
@@ -175,13 +177,13 @@ export class ApiClient {
     try {
       let result: unknown;
       try {
-        result = await this.raw(method, path, body, query, sentAccess);
+        result = await this.raw(method, path, body, query, sentAccess, options?.timeoutMs);
       } catch (e) {
         if (!(e instanceof ApiError) || e.status !== 401) throw e;
         if (epoch !== this.epoch) throw new ApiError(401, 401);
         if (sentAccess === this.access) await this.refresh(epoch);
         if (epoch !== this.epoch) throw new ApiError(401, 401);
-        result = await this.raw(method, path, body, query, this.access);
+        result = await this.raw(method, path, body, query, this.access, options?.timeoutMs);
       }
       if (epoch !== this.epoch) throw new ApiError(401, 401);
       return result;

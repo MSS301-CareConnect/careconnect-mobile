@@ -342,18 +342,16 @@ test('four primary tabs keep registration and day agenda inside work schedule, s
   }
 });
 
-test('visit filter drafts apply together and completed history remains accessible', async () => {
+test('custom dates filter all visits and the cancelled tab requests cancelled visits for the month', async () => {
   const f = fixture();
   const screen = await render(<App client={f.api} />);
   try {
     await fireEvent.press(await screen.findByRole('tab', { name: /Buổi được giao/ }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Bộ lọc buổi chăm sóc' }));
-    const before = f.requests.filter((r) => r.path === '/booking-occurrences').length;
-    await fireEvent.changeText(screen.getByLabelText('Từ ngày (YYYY-MM-DD)'), '2026-11-02');
-    await fireEvent.changeText(screen.getByLabelText('Đến ngày (YYYY-MM-DD)'), '2026-11-03');
-    await fireEvent.press(screen.getByRole('button', { name: 'Đã nhận ca' }));
-    expect(f.requests.filter((r) => r.path === '/booking-occurrences')).toHaveLength(before);
-    await fireEvent.press(screen.getByRole('button', { name: 'Áp dụng bộ lọc' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Tất cả' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Tùy chọn' }));
+    await fireEvent.changeText(screen.getByLabelText('Từ ngày'), '02/11/2026');
+    await fireEvent.changeText(screen.getByLabelText('Đến ngày'), '03/11/2026');
+    expect(screen.queryByRole('button', { name: 'Đã nhận ca' })).toBeNull();
     await waitFor(() =>
       expect(
         f.requests.some(
@@ -361,16 +359,16 @@ test('visit filter drafts apply together and completed history remains accessibl
             r.path === '/booking-occurrences' &&
             r.query.includes('from=2026-11-02') &&
             r.query.includes('to=2026-11-03') &&
-            r.query.includes('status=ACKNOWLEDGED'),
+            !r.query.includes('status='),
         ),
       ).toBe(true),
     );
-    await fireEvent.press(screen.getByRole('tab', { name: 'Lịch sử' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Đã hủy' }));
     await waitFor(() => {
       const request = f.requests.filter((r) => r.path === '/booking-occurrences').at(-1);
-      expect(request?.query).toContain('status=COMPLETED');
-      expect(request?.query).not.toContain('from=');
-      expect(request?.query).not.toContain('to=');
+      expect(request?.query).toContain('status=CANCELLED');
+      expect(request?.query).toContain(`from=${vietnamDay().slice(0, 7)}-01`);
+      expect(request?.query).toContain('to=');
     });
   } finally {
     await screen.unmount();

@@ -35,10 +35,12 @@ export function CalendarTabIcon({
   color,
   size,
   focused,
+  singleDay = false,
 }: {
   color: string;
   size: number;
   focused: boolean;
+  singleDay?: boolean;
 }) {
   const dotSize = size * 0.07;
   return (
@@ -58,23 +60,40 @@ export function CalendarTabIcon({
             backgroundColor: focused ? color : 'transparent',
             gap: dotSize,
           },
+          singleDay && {
+            alignItems: 'flex-start',
+            justifyContent: 'flex-start',
+            paddingTop: size * 0.08,
+            paddingLeft: size * 0.15,
+          },
         ]}
       >
-        {[0, 1, 2].map((row) => (
-          <View key={row} style={[styles.days, { gap: dotSize }]}>
-            {[0, 1, 2].map((column) => (
-              <View
-                key={column}
-                style={{
-                  width: dotSize,
-                  height: dotSize,
-                  borderRadius: dotSize / 4,
-                  backgroundColor: focused ? colors.white : color,
-                }}
-              />
-            ))}
-          </View>
-        ))}
+        {singleDay ? (
+          <View
+            style={{
+              width: size * 0.21,
+              height: size * 0.21,
+              borderRadius: size * 0.025,
+              backgroundColor: focused ? colors.white : color,
+            }}
+          />
+        ) : (
+          [0, 1, 2].map((row) => (
+            <View key={row} style={[styles.days, { gap: dotSize }]}>
+              {[0, 1, 2].map((column) => (
+                <View
+                  key={column}
+                  style={{
+                    width: dotSize,
+                    height: dotSize,
+                    borderRadius: dotSize / 4,
+                    backgroundColor: focused ? colors.white : color,
+                  }}
+                />
+              ))}
+            </View>
+          ))
+        )}
       </View>
       <Feather name="calendar" size={size} color={color} accessible={false} />
     </View>
@@ -87,12 +106,15 @@ export function ToolbarTabIcon({
   size,
   focused,
 }: {
-  name: 'home' | 'clipboard' | 'calendar' | 'user';
+  name: 'today' | 'clipboard' | 'calendar' | 'user';
   color: string;
   size: number;
   focused: boolean;
 }) {
-  if (name === 'calendar') return <CalendarTabIcon color={color} size={size} focused={focused} />;
+  if (name === 'today' || name === 'calendar')
+    return (
+      <CalendarTabIcon color={color} size={size} focused={focused} singleDay={name === 'today'} />
+    );
   if (!focused) return <Feather name={name} color={color} size={size} accessible={false} />;
   return (
     <View
@@ -100,46 +122,6 @@ export function ToolbarTabIcon({
       accessible={false}
       importantForAccessibility="no-hide-descendants"
     >
-      {name === 'home' && (
-        <>
-          <View
-            style={{
-              position: 'absolute',
-              width: 0,
-              height: 0,
-              top: size * 0.06,
-              left: size * 0.1,
-              borderLeftWidth: size * 0.4,
-              borderRightWidth: size * 0.4,
-              borderBottomWidth: size * 0.38,
-              borderLeftColor: 'transparent',
-              borderRightColor: 'transparent',
-              borderBottomColor: color,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: size * 0.35,
-              bottom: size * 0.1,
-              left: size * 0.21,
-              right: size * 0.21,
-              backgroundColor: color,
-              borderRadius: size * 0.05,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: size * 0.6,
-              bottom: size * 0.1,
-              left: size * 0.42,
-              right: size * 0.42,
-              backgroundColor: colors.white,
-            }}
-          />
-        </>
-      )}
       {name === 'clipboard' && (
         <>
           <View

@@ -8,20 +8,22 @@ import { ApiClient } from '../src/core/api';
 import { AppProvider, useApp } from '../src/core/app-context';
 import { Routes } from '../src/app/routes';
 import { AbsenceExplainScreen, AbsencesScreen } from '../src/features/absences/screen';
+import { VisitsScreen } from '../src/features/visits/screens';
 
 const Stack = createNativeStackNavigator<Routes>();
-function Subject() {
+function Subject({ assigned = false }: { assigned?: boolean }) {
   const { user } = useApp();
   return user ? (
     <NavigationContainer>
-      <Stack.Navigator>
+      <Stack.Navigator initialRouteName={assigned ? 'Tabs' : 'Absences'}>
+        <Stack.Screen name="Tabs" component={VisitsScreen} />
         <Stack.Screen name="Absences" component={AbsencesScreen} />
         <Stack.Screen name="AbsenceExplain" component={AbsenceExplainScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   ) : null;
 }
-function fixture() {
+function fixture(grouped = false) {
   const posted: unknown[] = [];
   const absence: Record<string, unknown> = {
     id: 'a1',
@@ -39,7 +41,8 @@ function fixture() {
     'http://test',
     { get: async () => 'r', set: async () => undefined },
     async (input, init) => {
-      const path = new URL(String(input)).pathname.replace('/api/v1', '');
+      const url = new URL(String(input));
+      const path = url.pathname.replace('/api/v1', '');
       let result: unknown;
       if (path === '/auth/refresh') result = { accessToken: 'a', refreshToken: 'r' };
       else if (path === '/users/me') result = { id: 'u', roles: ['CAREGIVER'], status: 'ACTIVE' };
@@ -50,8 +53,36 @@ function fixture() {
         absence.explainedAt = '2026-11-10T05:00:00Z';
         result = absence;
       } else if (path === '/caregiver-absences/a1') result = absence;
-      else if (path === '/caregiver-absences')
+      else if (path === '/caregiver-absences' && grouped) {
+        const page = Number(url.searchParams.get('page'));
+        const items =
+          page === 0
+            ? [
+                absence,
+                {
+                  ...absence,
+                  id: 'a2',
+                  occurrenceId: 'o2',
+                  occurrenceNo: 3,
+                  explanation: 'Đã gọi trung tâm để báo tình hình.',
+                },
+              ]
+            : [
+                {
+                  ...absence,
+                  id: 'a3',
+                  occurrenceId: 'o3',
+                  bookingId: 'b2',
+                  bookingCode: 'BK0002',
+                  recipientName: 'Bà Hoa',
+                  explanation: 'Đã báo trung tâm.',
+                },
+              ];
+        result = { items, page, totalPages: 2, totalElements: 3 };
+      } else if (path === '/caregiver-absences')
         result = { items: [absence], page: 0, totalPages: 1, totalElements: 1 };
+      else if (['/booking-occurrences', '/bookings/caregiver-requests'].includes(path))
+        result = { items: [], page: 0, totalPages: 0, totalElements: 0 };
       return new Response(JSON.stringify({ code: 200, result }));
     },
   );
@@ -81,6 +112,36 @@ test('the caregiver sees a pending absence, is told the minimum length and sends
     await screen.findByText('Giải trình: Xe hỏng giữa đường, đã gọi trung tâm');
     expect(f.posted).toEqual([{ explanation: 'Xe hỏng giữa đường, đã gọi trung tâm' }]);
     expect(screen.getByRole('button', { name: 'Sửa giải trình' })).toBeTruthy();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test('assigned visits groups all pending absences by booking and opens the existing explanation form', async () => {
+  const f = fixture(true);
+  const screen = await render(
+    <SafeAreaProvider>
+      <AppProvider client={f.client}>
+        <Subject assigned />
+      </AppProvider>
+    </SafeAreaProvider>,
+  );
+  try {
+    const panel = await screen.findByRole('button', { name: 'Bạn bị ghi nhận vắng ca (3)' });
+    expect(screen.getByText('2 lịch · 1 buổi chưa giải trình')).toBeTruthy();
+    expect(screen.getByText('BK0002')).toBeTruthy();
+    await fireEvent.press(panel);
+    expect(screen.queryByText('BK0002')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Bạn bị ghi nhận vắng ca (3)' }));
+    await fireEvent.press(screen.getAllByRole('button', { name: 'Xem các buổi' })[0]!);
+    expect(screen.getByText('Chưa giải trình')).toBeTruthy();
+    expect(screen.getByText('Đã giải trình')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Gửi giải trình' }));
+    const input = await screen.findByLabelText('Giải trình');
+    await fireEvent.changeText(input, 'Tôi đã báo trung tâm trong ngày.');
+    await fireEvent.press(screen.getByRole('button', { name: 'Gửi giải trình' }));
+    expect(await screen.findByText('2 lịch · 0 buổi chưa giải trình')).toBeTruthy();
+    expect(f.posted).toEqual([{ explanation: 'Tôi đã báo trung tâm trong ngày.' }]);
   } finally {
     await screen.unmount();
   }

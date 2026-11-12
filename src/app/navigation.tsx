@@ -27,6 +27,8 @@ import { KeptDepositsScreen } from '../features/earnings/screen';
 import { WalletScreen } from '../features/wallet/screen';
 import { WalletWithdrawScreen } from '../features/wallet/withdraw-screen';
 import { AbsenceExplainScreen, AbsencesScreen } from '../features/absences/screen';
+import { AssistantScreen } from '../features/assistant/screen';
+import { AssistantLauncher } from '../features/assistant/chat-ui';
 import { CertificatesScreen } from '../features/profile/certificates-screen';
 import { SecuritySessionsScreen } from '../features/profile/sessions-screen';
 import { useReducedMotion } from '../core/accessibility';
@@ -34,7 +36,6 @@ import { WorkShiftScreen } from '../features/work-shifts/screens';
 import { RegisterShiftScreen } from '../features/work-shifts/board';
 import { WorkScheduleScreen } from '../features/availability/work-schedule-screen';
 import {
-  NotificationBanner,
   NotificationBell,
   NotificationProvider,
   NotificationsScreen,
@@ -55,6 +56,14 @@ const theme = {
     notification: colors.primary,
   },
 };
+function CaregiverToolbar() {
+  return (
+    <View style={styles.toolbar}>
+      <AssistantLauncher onPress={() => navRef.navigate('Assistant')} />
+      <NotificationBell onPress={() => navRef.navigate('Notifications')} />
+    </View>
+  );
+}
 function Tabs() {
   const { t } = useApp();
   const insets = useSafeAreaInsets();
@@ -72,7 +81,7 @@ function Tabs() {
         ],
         headerTitleContainerStyle: styles.headerTitle,
         headerRightContainerStyle: styles.headerRight,
-        headerRight: () => <NotificationBell onPress={() => navRef.navigate('Notifications')} />,
+        headerRight: CaregiverToolbar,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarActiveBackgroundColor: colors.pale,
@@ -90,7 +99,7 @@ function Tabs() {
           <ToolbarTabIcon
             name={
               route.name === 'Home'
-                ? 'home'
+                ? 'today'
                 : route.name === 'Schedule'
                   ? 'clipboard'
                   : route.name === 'Availability'
@@ -126,8 +135,9 @@ function Tabs() {
 
 const styles = StyleSheet.create({
   header: { backgroundColor: colors.bg },
-  headerTitle: { left: 16, right: 80 },
+  headerTitle: { left: 16, right: 132 },
   headerRight: { paddingRight: 16 },
+  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tabBar: {
     backgroundColor: colors.white,
     borderTopWidth: 0,
@@ -180,7 +190,6 @@ export function AppNavigator() {
   const navigator = (
     <NavigationContainer key={`${signed}-${api.epoch}`} ref={navRef} theme={theme}>
       <View style={{ flex: 1 }}>
-        {signed && <NotificationBanner onPress={() => navRef.navigate('Notifications')} />}
         <Stack.Navigator
           initialRouteName={signed ? 'Tabs' : landingPending ? 'Landing' : 'Login'}
           screenOptions={{
@@ -197,7 +206,7 @@ export function AppNavigator() {
               <Stack.Screen
                 name="History"
                 component={HistoryScreen}
-                options={{ title: t('history') }}
+                options={{ title: t('CANCELLED') }}
               />
               <Stack.Screen name="Visit" component={VisitScreen} options={{ title: t('detail') }} />
               <Stack.Screen
@@ -244,6 +253,11 @@ export function AppNavigator() {
                 name="WalletWithdraw"
                 component={WalletWithdrawScreen}
                 options={{ title: t('walletWithdrawTitle') }}
+              />
+              <Stack.Screen
+                name="Assistant"
+                component={AssistantScreen}
+                options={{ headerShown: false }}
               />
               <Stack.Screen
                 name="Absences"

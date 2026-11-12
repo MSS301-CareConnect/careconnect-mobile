@@ -2,7 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 export type WorkScheduleSection = 'agenda' | 'register' | 'timeOff';
 export type ShiftRegistrationView = 'open' | 'pending' | 'approved' | 'history';
-export type VisitListRange = 'respond' | 'today' | 'upcoming' | 'all' | 'history';
+export type VisitListRange = 'respond' | 'today' | 'upcoming' | 'all' | 'cancelled';
 export type MainTabs = {
   Home: undefined;
   Schedule: { range?: VisitListRange; bookingId?: string } | undefined;
@@ -24,6 +24,7 @@ export type Routes = {
   Wallet: undefined;
   WalletWithdraw: undefined;
   Absences: undefined;
+  Assistant: undefined;
   AbsenceExplain: { id: string };
   TimeOff: undefined;
   Certificates: undefined;
