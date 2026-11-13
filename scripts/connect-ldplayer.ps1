@@ -30,7 +30,7 @@ $state=(& $AdbPath -s $serial get-state 2>$null)
 if ($LASTEXITCODE -ne 0 -or $state -ne 'device') {
   throw 'LDPlayer chua san sang. Mo LDPlayer; chi giu mot emulator, roi chay lai script.'
 }
-foreach ($port in @(8080,8090)) {
+foreach ($port in @(8080,8091)) {
   & $AdbPath -s $serial reverse "tcp:$port" "tcp:$port"
   if ($LASTEXITCODE -ne 0) { throw "Khong ket noi duoc cong $port tren $serial." }
 }

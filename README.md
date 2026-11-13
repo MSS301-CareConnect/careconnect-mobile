@@ -18,9 +18,9 @@ Chỉ tạo `.env` nếu chưa có file đó. Giữ Terminal Metro chạy, mở 
 
 Có thể mở thư mục `android/` bằng Android Studio để sync/build/chạy. `android/` là source native được quản lý trong Git. Dự án không dùng Expo prebuild, Expo Go hoặc development launcher.
 
-Metro dùng cổng **8090** vì Identity BE đã dùng 8081. Sau lần cài đầu, chạy `npm start` và mở biểu tượng CareConnect trên emulator; sửa JavaScript/TypeScript dùng Fast Refresh, không cần cài lại hay bấm Connect. Chỉ build/cài lại khi đổi native code hoặc native dependency. Lần đầu chuyển từ Expo sang CLI cần đăng nhập lại vì refresh token trong Expo SecureStore không được di chuyển.
+Metro dùng cổng **8091** vì Identity BE đã dùng 8081. Sau lần cài đầu, chạy `npm start` và mở biểu tượng CareConnect trên emulator; sửa JavaScript/TypeScript dùng Fast Refresh, không cần cài lại hay bấm Connect. Chỉ build/cài lại khi đổi native code hoặc native dependency. Lần đầu chuyển từ Expo sang CLI cần đăng nhập lại vì refresh token trong Expo SecureStore không được di chuyển.
 
-`API_URL` trong `.env` là origin gateway, không thêm `/api/v1`; app tự thêm đường dẫn này. Đây là cấu hình public, không đặt secrets. Android Studio Emulator dùng `http://10.0.2.2:8080`; LDPlayer/USB dùng `http://127.0.0.1:8080`. Với API loopback, `npm run android` tự nối lại cổng gateway và Metro8090 cho emulator/thiết bị đã mở; nhiều thiết bị thì chọn `npm run android -- --device SERIAL`. Gateway/BE chạy riêng. Sau khi đổi `.env`, khởi động lại Metro bằng `npm start -- --reset-cache`.
+`API_URL` trong `.env` là origin gateway, không thêm `/api/v1`; app tự thêm đường dẫn này. Đây là cấu hình public, không đặt secrets. Android Studio Emulator dùng `http://10.0.2.2:8080`; LDPlayer/USB dùng `http://127.0.0.1:8080`. Với API loopback, `npm run android` tự nối lại cổng gateway và Metro8091 cho emulator/thiết bị đã mở; nhiều thiết bị thì chọn `npm run android -- --device SERIAL`. Gateway/BE chạy riêng. Sau khi đổi `.env`, khởi động lại Metro bằng `npm start -- --reset-cache`.
 
 ## Chức năng
 
@@ -53,7 +53,7 @@ Check-in mặc định từ 30 phút trước đến trước 30 phút sau start
     npm run doctor
     npm run build:android
 
-Script build chạy Gradle `assembleDebug` từ native source và chép APK tới `artifacts/careconnect-react-native-debug.apk` (gitignore). **APK debug cần Metro 8090 để chạy JavaScript**; không có launcher hoặc embedded bundle. Build đầu có thể tải SDK/NDK/dependency còn thiếu.
+Script build chạy Gradle `assembleDebug` từ native source và chép APK tới `artifacts/careconnect-react-native-debug.apk` (gitignore). **APK debug cần Metro 8091 để chạy JavaScript**; không có launcher hoặc embedded bundle. Build đầu có thể tải SDK/NDK/dependency còn thiếu.
 
 Release cần gateway HTTPS và signing riêng; HTTP chỉ bật trong Android debug. Chưa cấu hình phát hành hoặc signing release. Không commit signing keys, local SDK paths hoặc output build.
 

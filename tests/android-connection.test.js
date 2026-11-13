@@ -28,8 +28,8 @@ describe('Android local gateway connection', () => {
       '-s',
       'emulator-5554',
       'reverse',
-      'tcp:8090',
-      'tcp:8090',
+      'tcp:8091',
+      'tcp:8091',
     ]);
   });
 

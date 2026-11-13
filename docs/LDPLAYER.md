@@ -34,7 +34,7 @@ npm run android
 
 Chờ build/cài xong; CareConnect sẽ tự mở trong LDPlayer. Lần đầu build có thể lâu. Đăng nhập bằng tài khoản Caregiver.
 
-Lệnh này tự tìm ADB và nối lại cổng gateway8080 cùng Metro8090 trước khi chạy app. Không cần nhập đường dẫn SDK hoặc chạy lệnh `adb reverse` riêng. Các kết nối này có thể mất khi khởi động lại emulator/ADB; chỉ cài app hoặc chạy Metro sẽ không tự nối cổng gateway.
+Lệnh này tự tìm ADB và nối lại cổng gateway8080 cùng Metro8091 trước khi chạy app. Không cần nhập đường dẫn SDK hoặc chạy lệnh `adb reverse` riêng. Các kết nối này có thể mất khi khởi động lại emulator/ADB; chỉ cài app hoặc chạy Metro sẽ không tự nối cổng gateway.
 
 Nếu đang mở nhiều emulator/điện thoại, chạy `adb devices`, rồi chọn đúng mã thiết bị, ví dụ `npm run android -- --device emulator-5554`. Với API127.0.0.1, dùng `--device SERIAL` thay cho trình chọn `--list-devices` để nối cổng đúng thiết bị.
 

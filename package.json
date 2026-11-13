@@ -42,7 +42,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "react-native start --port 8090",
+    "start": "react-native start --port 8091",
     "android": "node scripts/run-android.cjs",
     "doctor": "react-native doctor",
     "build:android": "powershell -ExecutionPolicy Bypass -File scripts/build-android.ps1",

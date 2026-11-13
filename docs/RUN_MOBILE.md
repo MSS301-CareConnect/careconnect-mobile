@@ -63,7 +63,7 @@ Trong Android Studio mở Device Manager và chạy một AVD Android API 24 tr�
     adb devices
     npm start
 
-Metro dùng **8090** vì BE Identity dùng 8081. Giữ Terminal Metro mở; trong Terminal thứ hai chạy:
+Metro dùng **8091** vì BE Identity dùng 8081. Giữ Terminal Metro mở; trong Terminal thứ hai chạy:
 
     npm run android
 
@@ -84,12 +84,12 @@ Với LDPlayer, bật ADB debugging cục bộ rồi chạy:
     .\scripts\connect-ldplayer.ps1
     adb devices
 
-Script mặc định kết nối `127.0.0.1:5555`, reverse gateway 8080 cùng Metro 8090. Đặt `API_URL=http://127.0.0.1:8080`, chạy `npm start`, rồi `npm run android` ở Terminal khác để cài lần đầu. `npm run android` tự nối lại gateway và Metro cho thiết bị đang chọn khi API là địa chỉ loopback; nếu ADB đã thấy một thiết bị, không cần chạy script kết nối trước lệnh này. Khi có nhiều thiết bị, chọn bằng `--device DEVICE_SERIAL`; không dùng `--list-devices`/`--interactive` với API loopback. Những lần chỉ mở APK có sẵn thì chạy lại script kết nối sau khi khởi động lại LDPlayer rồi mở app từ biểu tượng. Có thể truyền `-AdbPath` hoặc `-Address`; xem [LDPLAYER.md](LDPLAYER.md).
+Script mặc định kết nối `127.0.0.1:5555`, reverse gateway 8080 cùng Metro 8091. Đặt `API_URL=http://127.0.0.1:8080`, chạy `npm start`, rồi `npm run android` ở Terminal khác để cài lần đầu. `npm run android` tự nối lại gateway và Metro cho thiết bị đang chọn khi API là địa chỉ loopback; nếu ADB đã thấy một thiết bị, không cần chạy script kết nối trước lệnh này. Khi có nhiều thiết bị, chọn bằng `--device DEVICE_SERIAL`; không dùng `--list-devices`/`--interactive` với API loopback. Những lần chỉ mở APK có sẵn thì chạy lại script kết nối sau khi khởi động lại LDPlayer rồi mở app từ biểu tượng. Có thể truyền `-AdbPath` hoặc `-Address`; xem [LDPLAYER.md](LDPLAYER.md).
 
 Với điện thoại Android thật, bật Developer options/USB debugging, kết nối USB và chấp nhận quyền ADB. Kiểm tra `adb devices`, rồi reverse hai cổng trước khi chạy Metro/cài app:
 
     adb reverse tcp:8080 tcp:8080
-    adb reverse tcp:8090 tcp:8090
+    adb reverse tcp:8091 tcp:8091
 
 Đặt `API_URL=http://127.0.0.1:8080`. Khi có nhiều thiết bị, thêm `-s DEVICE_ID` ngay sau `adb` trong các lệnh reverse/install. Nếu dùng LAN, điện thoại phải truy cập được gateway/Metro qua mạng; dùng IP LAN thật và kiểm tra firewall. HTTP local chỉ cho Android debug; release dùng HTTPS.
 
@@ -107,7 +107,7 @@ Cài vào thiết bị đã kết nối:
 
     adb install -r artifacts/careconnect-react-native-debug.apk
 
-**APK debug cần Metro 8090 để chạy JavaScript.** Chạy `npm start`, giữ kết nối Metro phù hợp với emulator/USB/LAN rồi mở CareConnect. APK này không có Expo launcher hay embedded bundle và không phải bản phát hành cửa hàng.
+**APK debug cần Metro 8091 để chạy JavaScript.** Chạy `npm start`, giữ kết nối Metro phù hợp với emulator/USB/LAN rồi mở CareConnect. APK này không có Expo launcher hay embedded bundle và không phải bản phát hành cửa hàng.
 
 Release chưa được cấu hình: cần gateway HTTPS và signing riêng. Không dùng debug key để ký release, không đưa signing key, mật khẩu, local SDK paths hoặc output build vào Git.
 
@@ -120,7 +120,7 @@ Release chưa được cấu hình: cần gateway HTTPS và signing riêng. Khô
 
 `npm run check` chạy formatter, ESLint, strict TypeScript và Jest; `react-native config` kiểm tra cấu hình/autolinking; `doctor` kiểm tra công cụ môi trường ở máy phát triển. Không tắt lint, giảm ngưỡng hoặc bỏ test để qua kiểm tra. Test dùng fake API/native mocks, không chứng minh giao dịch BE thật. CI chạy cài dependency, check, native config và Gradle debug build; không chạy doctor tương tác.
 
-CLI doctor mặc định tìm Metro ở 8081. Khi kiểm tra dự án này, đặt `$env:RCT_METRO_PORT='8090'` trước `npm run doctor`. Doctor20.2 hiện khai báo dải JDK17–20 và có thể báo lỗi JDK21; bản native của dự án đã build thành công với JAVA_HOME21. Nếu `java -version` ra25 trong khi JAVA_HOME trỏ21, đưa `$env:JAVA_HOME\bin` lên đầu PATH như bước chuẩn bị. Giữ nguyên kiểm tra; phân biệt cảnh báo phiên bản của doctor với kết quả Gradle thực tế.
+CLI doctor mặc định tìm Metro ở 8081. Khi kiểm tra dự án này, đặt `$env:RCT_METRO_PORT='8091'` trước `npm run doctor`. Doctor20.2 hiện khai báo dải JDK17–20 và có thể báo lỗi JDK21; bản native của dự án đã build thành công với JAVA_HOME21. Nếu `java -version` ra25 trong khi JAVA_HOME trỏ21, đưa `$env:JAVA_HOME\bin` lên đầu PATH như bước chuẩn bị. Giữ nguyên kiểm tra; phân biệt cảnh báo phiên bản của doctor với kết quả Gradle thực tế.
 
 Để thử luồng giao diện, kiểm tra đăng nhập, năm tab, danh sách/chi tiết ca, mở báo cáo/chọn ảnh và luồng denied/retry trên thiết bị. Ghi rõ kiểm chứng nào dùng BE thật, thao tác nào chưa xác nhận và các giới hạn môi trường; không coi kết quả Expo cũ là kết quả CLI mới.
 
@@ -136,7 +136,7 @@ Nếu BE báo thiếu bảng/cột sau khi cập nhật mà vẫn dùng database
 | Thiếu SDK/NDK/license                            | Dùng SDK Manager và Command-line Tools, chấp nhận licenses; giữ các phiên bản đã khóa.                                                              |
 | Ninja báo đường dẫn quá dài trên Windows         | Giữ cấu hình CMake của native project và đặt repo ở đường dẫn ngắn hơn; không chạy Expo prebuild để xử lý.                                          |
 | Không thấy thiết bị hoặc trạng thái offline      | Kiểm tra `adb devices`, quyền USB, emulator; LDPlayer cần chạy lại script kết nối.                                                                  |
-| Unable to load script/could not connect to Metro | Chạy `npm start` tại repo, kiểm tra cổng 8090 và reverse/LAN. APK debug cần Metro.                                                                  |
+| Unable to load script/could not connect to Metro | Chạy `npm start` tại repo, kiểm tra cổng 8091 và reverse/LAN. APK debug cần Metro.                                                                  |
 | API lỗi trên emulator                            | Android Studio Emulator dùng `10.0.2.2`; LDPlayer/USB dùng `127.0.0.1` sau reverse 8080. Kiểm tra gateway.                                          |
 | API URL vẫn cũ                                   | Dừng Metro rồi chạy `npm start -- --reset-cache`.                                                                                                   |
 | INSTALL_FAILED_UPDATE_INCOMPATIBLE               | Bản cũ và bản mới có signing key khác nhau. Dùng emulator thử nghiệm riêng hoặc chủ động quyết định cách xử lý bản cũ; không tự gỡ app/xóa dữ liệu. |

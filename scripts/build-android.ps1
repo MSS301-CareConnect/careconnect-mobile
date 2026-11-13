@@ -15,5 +15,5 @@ try {
   New-Item -ItemType Directory -Force artifacts | Out-Null
   Copy-Item -LiteralPath android/app/build/outputs/apk/debug/app-debug.apk -Destination artifacts/careconnect-react-native-debug.apk -Force
   Write-Host 'APK: artifacts/careconnect-react-native-debug.apk'
-  Write-Host 'React Native CLI debug build; start Metro on port 8090 before opening the app.'
+  Write-Host 'React Native CLI debug build; start Metro on port 8091 before opening the app.'
 } finally { Pop-Location }

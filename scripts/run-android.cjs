@@ -40,7 +40,7 @@ function prepareConnection({
   if (!devices.includes(serial))
     throw new Error(`Thiet bi ${serial} chua san sang. Kiem tra adb devices.`);
   const apiPort = url.port || (url.protocol === 'https:' ? '443' : '80');
-  for (const port of new Set([apiPort, '8090']))
+  for (const port of new Set([apiPort, '8091']))
     execute(adbPath, ['-s', serial, 'reverse', `tcp:${port}`, `tcp:${port}`]);
   return serial;
 }
@@ -91,7 +91,7 @@ function main() {
   }
   const result = spawnSync(
     process.execPath,
-    [cliPath(), 'run-android', '--port', '8090', '--active-arch-only', ...args],
+    [cliPath(), 'run-android', '--port', '8091', '--active-arch-only', ...args],
     { cwd: root, stdio: 'inherit', windowsHide: true },
   );
   if (result.error) throw result.error;

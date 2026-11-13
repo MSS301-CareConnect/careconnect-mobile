@@ -6,8 +6,8 @@ export const absenceCopy: Record<string, readonly [string, string]> = {
     '{bookings} bookings · {waiting} visits to explain',
   ],
   absencePanelHint: [
-    'Khách đã được hoàn tiền các buổi này. Hãy gửi giải trình để trung tâm xem xét trước khi kết luận.',
-    'Customers have been refunded for these visits. Send an explanation for the center to review.',
+    'Nếu bạn đã làm buổi mà quên check-in, hãy gửi giải trình ngay: trung tâm chỉ ghi nhận check-in hộ được trước khi các buổi trong ngày kết thúc.',
+    'If you did the visit but forgot to check in, explain now: the center can record your check-in only until the day’s visits end.',
   ],
   absencePanelLoading: ['Đang kiểm tra ghi nhận vắng ca…', 'Checking for missed visits…'],
   absencePanelError: ['Không tải được ghi nhận vắng ca.', 'Could not load missed visits.'],
@@ -24,8 +24,8 @@ export const absenceCopy: Record<string, readonly [string, string]> = {
   ],
   absences: ['Vắng ca', 'Missed visits'],
   absencesHint: [
-    'Buổi đã thanh toán mà bạn không check-in. Khách đã được hoàn 100 % tiền buổi đó. Hãy giải trình để trung tâm xem xét trước khi kết luận.',
-    'Paid visits you did not check in to. The customer was refunded in full. Explain what happened so the center can review it before concluding.',
+    'Buổi đã thanh toán mà bạn không check-in. Khách được hoàn 100 % sau khi các buổi trong ngày kết thúc, trừ khi trung tâm ghi nhận check-in hộ. Hãy giải trình sớm.',
+    'Paid visits you did not check in to. The customer is refunded in full once the day’s visits end, unless the center records your check-in. Explain soon.',
   ],
   absenceFilterPending: ['Chờ kết luận', 'Awaiting conclusion'],
   absenceFilterAll: ['Tất cả', 'All'],
@@ -61,8 +61,8 @@ export const absenceCopy: Record<string, readonly [string, string]> = {
   ],
   absenceExplanationLong: ['Giải trình tối đa 1000 ký tự.', 'At most 1000 characters.'],
   absenceRefunded: [
-    'Khách đã được hoàn 100 % tiền buổi này vào ví.',
-    'The customer was refunded this visit in full to the wallet.',
+    'Khách được hoàn 100 % tiền buổi này vào ví sau khi các buổi trong ngày kết thúc.',
+    'The customer is refunded this visit in full to the wallet once the day’s visits end.',
   ],
   absenceAlreadyConcluded: [
     'Trung tâm đã kết luận lần vắng này, không sửa giải trình được nữa.',
